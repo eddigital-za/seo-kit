@@ -1,0 +1,29 @@
+{
+  "brand": "Bike Transport South Africa",
+  "domain": "biketransport.co.za",
+  "market": {
+    "country_name": "South Africa",
+    "gsc_country": "zaf",
+    "dataforseo_location_code": 2710,
+    "language": "en"
+  },
+  "seo": {
+    "strike_zone_min": 5,
+    "strike_zone_max": 20,
+    "crawl_limit": 100,
+    "priorities": [
+      "existing commercial page improvements",
+      "route and location pages",
+      "internal linking",
+      "supporting informational content"
+    ]
+  },
+  "guardrails": {
+    "wordpress_write_enabled": false,
+    "auto_publish_enabled": false,
+    "allow_fabricated_claims": false,
+    "allow_keyword_stuffing": false,
+    "allow_mass_location_page_generation": false,
+    "require_human_review_for_content": true
+  }
+}
