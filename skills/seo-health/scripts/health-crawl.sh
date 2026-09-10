@@ -21,7 +21,6 @@ echo "🕷️ Crawl Health Audit: $DOMAIN"
 echo "Sitemap: $SITEMAP"
 echo "======================================"
 
-# Check robots.txt
 echo ""
 echo "📋 robots.txt"
 ROBOTS=$(curl -sS -L -A "$UA" -o /dev/null -w "%{http_code}" "https://${DOMAIN}/robots.txt" || true)
@@ -40,7 +39,6 @@ else
   ROBOTS_SITEMAP=""
 fi
 
-# Resolve sitemap, following redirects.
 echo ""
 echo "🗺️ Sitemap"
 if [[ -n "$ROBOTS_SITEMAP" ]]; then
@@ -70,7 +68,6 @@ if [[ -z "$LOCS" ]]; then
   exit 1
 fi
 
-# If the sitemap contains child XML files, treat it as an index and expand them.
 if echo "$LOCS" | grep -qiE '\.xml([?#].*)?$'; then
   URLS=""
   while IFS= read -r SUB; do
@@ -94,7 +91,6 @@ fi
 
 [[ -z "$URLS" ]] && { echo "No page URLs found. Exiting."; exit 1; }
 
-# Crawl pages
 BROKEN=0
 MISSING_TITLE=0
 MISSING_DESC=0
@@ -120,17 +116,17 @@ while IFS= read -r PAGE; do
   fi
 
   TITLE=$(echo "$BODY" | grep -oiP '<title[^>]*>\K[^<]*' | head -1 || true)
-  DESC=$(echo "$BODY" | grep -oiP '<meta[^>]+name=["'"']description["'"'][^>]+content=["'"']\K[^"'"']*' | head -1 || true)
-  [[ -z "$DESC" ]] && DESC=$(echo "$BODY" | grep -oiP '<meta[^>]+content=["'"']\K[^"'"']*(?=["'"'][^>]+name=["'"']description["'"'])' | head -1 || true)
-  CANONICAL=$(echo "$BODY" | grep -oiP '<link[^>]+rel=["'"']canonical["'"'][^>]+href=["'"']\K[^"'"']*' | head -1 || true)
-  [[ -z "$CANONICAL" ]] && CANONICAL=$(echo "$BODY" | grep -oiP '<link[^>]+href=["'"']\K[^"'"']*(?=["'"'][^>]+rel=["'"']canonical["'"'])' | head -1 || true)
+  DESC_TAG=$(echo "$BODY" | grep -oiE '<meta[^>]+name="description"[^>]*>' | head -1 || true)
+  DESC=$(echo "$DESC_TAG" | grep -oiP 'content="\K[^"]*' | head -1 || true)
+  CANONICAL_TAG=$(echo "$BODY" | grep -oiE '<link[^>]+rel="canonical"[^>]*>' | head -1 || true)
+  CANONICAL=$(echo "$CANONICAL_TAG" | grep -oiP 'href="\K[^"]*' | head -1 || true)
 
   ISSUES=""
   [[ -z "$TITLE" ]] && { ISSUES="${ISSUES} no-title"; MISSING_TITLE=$((MISSING_TITLE + 1)); }
   [[ -z "$DESC" ]] && { ISSUES="${ISSUES} no-description"; MISSING_DESC=$((MISSING_DESC + 1)); }
   [[ -z "$CANONICAL" ]] && { ISSUES="${ISSUES} no-canonical"; MISSING_CANONICAL=$((MISSING_CANONICAL + 1)); }
 
-  MIXED=$(echo "$BODY" | grep -Eoc '(src|href)=["'"']http://' 2>/dev/null || true)
+  MIXED=$(echo "$BODY" | grep -Eoc '(src|href)="http://' 2>/dev/null || true)
   [[ "$MIXED" -gt 0 ]] && { ISSUES="${ISSUES} mixed-content"; MIXED_CONTENT=$((MIXED_CONTENT + 1)); }
 
   if [[ -n "$ISSUES" ]]; then
