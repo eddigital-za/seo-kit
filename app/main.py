@@ -1,3 +1,4 @@
+import os
 from fastapi import Depends, FastAPI, HTTPException
 from app.settings import load_config
 from app.security import require_agent_key
@@ -64,4 +65,15 @@ def audit_full():
         "technical": audit_technical(),
         "gsc": audit_gsc(),
         "guardrails": config["guardrails"],
+    }
+
+@app.post("/diagnostic/crawl-once")
+def diagnostic_crawl_once():
+    if os.getenv("DIAGNOSTIC_MODE") != "1":
+        raise HTTPException(status_code=404, detail="Not found")
+    config = load_config()
+    return {
+        "domain": config["domain"],
+        "crawl": run_crawl(config["domain"], min(config["seo"]["crawl_limit"], 50)),
+        "write_actions_taken": 0,
     }
