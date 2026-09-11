@@ -1,12 +1,27 @@
 import os
 from fastapi import Depends, FastAPI, HTTPException
+from pydantic import BaseModel
 from app.settings import load_config
 from app.security import require_agent_key
 from app.gsc import fetch_queries, GSCConfigurationError
 from app.scoring import score_gsc_rows
-from app.seo_kit import run_crawl, run_speed
+from app.seo_kit import run_crawl, run_speed, run_speed_batch
 
-app = FastAPI(title="BTSA SEO Agent", version="0.1.0")
+app = FastAPI(title="BTSA SEO Agent", version="0.2.0")
+
+BTSA_PERFORMANCE_URLS = [
+    "https://biketransport.co.za/",
+    "https://biketransport.co.za/durban-johannesburg-motorcycle-transport/",
+    "https://biketransport.co.za/durban-bloemfontein-motorcycle-transport/",
+    "https://biketransport.co.za/durban-cape-town-motorcycle-transport/",
+    "https://biketransport.co.za/johannesburg-and-cape-town/",
+    "https://biketransport.co.za/kzn-local-motorcycle-transport/",
+]
+
+
+class SpeedBatchRequest(BaseModel):
+    urls: list[str] | None = None
+
 
 @app.get("/health")
 def health():
@@ -14,10 +29,13 @@ def health():
     return {
         "ok": True,
         "service": "btsa-seo-agent",
+        "version": "0.2.0",
         "domain": config["domain"],
         "market": config["market"]["country_name"],
         "wordpress_write_enabled": config["guardrails"]["wordpress_write_enabled"],
+        "pagespeed_configured": bool(os.getenv("PAGESPEED_API_KEY", "").strip()),
     }
+
 
 @app.post("/audit/technical", dependencies=[Depends(require_agent_key)])
 def audit_technical():
@@ -28,6 +46,22 @@ def audit_technical():
         "speed": run_speed(config["site_url"]),
         "write_actions_taken": 0,
     }
+
+
+@app.post("/audit/pagespeed", dependencies=[Depends(require_agent_key)])
+def audit_pagespeed(request: SpeedBatchRequest | None = None):
+    urls = request.urls if request and request.urls else BTSA_PERFORMANCE_URLS
+    if len(urls) > 10:
+        raise HTTPException(status_code=400, detail="Maximum 10 URLs per PageSpeed batch")
+    if any(not url.startswith("https://biketransport.co.za") for url in urls):
+        raise HTTPException(status_code=400, detail="Only biketransport.co.za URLs are allowed")
+    return {
+        "urls_tested": len(urls),
+        "strategies": ["mobile", "desktop"],
+        "results": run_speed_batch(urls),
+        "write_actions_taken": 0,
+    }
+
 
 @app.post("/audit/gsc", dependencies=[Depends(require_agent_key)])
 def audit_gsc():
@@ -57,6 +91,7 @@ def audit_gsc():
         "write_actions_taken": 0,
     }
 
+
 @app.post("/audit/full", dependencies=[Depends(require_agent_key)])
 def audit_full():
     config = load_config()
@@ -66,6 +101,7 @@ def audit_full():
         "gsc": audit_gsc(),
         "guardrails": config["guardrails"],
     }
+
 
 @app.post("/diagnostic/crawl-once")
 def diagnostic_crawl_once():
