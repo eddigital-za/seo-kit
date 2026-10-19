@@ -16,7 +16,7 @@ async def lifespan(app: FastAPI):
             result = connection_check()
             print(f"WP_VERIFY authenticated={result['authenticated']} user_id={result['user']['id']} pages_read={len(result['recent_pages'])} write_actions={result['write_actions_taken']}", flush=True)
         except Exception as exc:
-            print(f"WP_VERIFY failed type={type(exc).__name__} detail={exc}", flush=True)
+            print(f"WP_VERIFY failed type={type(exc).__name__} detail={repr(exc)}", flush=True)
     yield
 
 app = FastAPI(title="BTSA SEO Agent", version="0.3.1", lifespan=lifespan)
