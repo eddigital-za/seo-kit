@@ -1,5 +1,9 @@
 import os
 import json
+import re
+import subprocess
+import tempfile
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
@@ -256,3 +260,54 @@ def replace_estimator_html(object_id: int, new_html: str, dry_run: bool = True) 
         return {"page_id": object_id, "changed": True, "write_actions_taken": 0}
     compact = json.dumps(tree, separators=(",", ":"), ensure_ascii=False)
     return update_content("pages", object_id, {"meta": {"_elementor_data": compact}}, dry_run=False)
+
+
+def optimize_estimator_widget(object_id: int, dry_run: bool = True) -> dict[str, Any]:
+    html = get_estimator_html(object_id)
+    match = re.search(r'<script\s+type=["\']text/babel["\']>(.*?)</script>', html, flags=re.I | re.S)
+    if not match:
+        return {"page_id": object_id, "changed": False, "reason": "no text/babel script", "write_actions_taken": 0}
+    source = match.group(1)
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "estimator.jsx"
+        out = Path(tmp) / "estimator.js"
+        src.write_text(source, encoding="utf-8")
+        process = subprocess.run(
+            [
+                "tsc", str(src), "--jsx", "react", "--target", "ES2018",
+                "--module", "none", "--allowJs", "--skipLibCheck",
+                "--outFile", str(out),
+            ],
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        if not out.exists():
+            raise RuntimeError(f"Estimator transpilation failed: {process.stderr[-1000:]}")
+        compiled = out.read_text(encoding="utf-8")
+    optimized = re.sub(
+        r'\s*<script[^>]+@babel/standalone[^>]*></script>\s*',
+        "\n",
+        html,
+        flags=re.I,
+    )
+    optimized = re.sub(
+        r'<script\s+type=["\']text/babel["\']>.*?</script>',
+        "<script>\n" + compiled + "\n</script>",
+        optimized,
+        count=1,
+        flags=re.I | re.S,
+    )
+    if optimized == html:
+        return {"page_id": object_id, "changed": False, "reason": "no effective change", "write_actions_taken": 0}
+    if dry_run:
+        return {
+            "page_id": object_id, "changed": True, "source_bytes": len(source),
+            "compiled_bytes": len(compiled), "babel_removed": "@babel/standalone" not in optimized,
+            "write_actions_taken": 0,
+        }
+    result = replace_estimator_html(object_id, optimized, dry_run=False)
+    result.update({
+        "source_bytes": len(source),
+        "compiled_bytes": len(compiled),
+        "babel_removed": "@babel/standalone" not in optimized,
+    })
+    return result
