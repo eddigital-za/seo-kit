@@ -14,21 +14,6 @@ def _bootstrap_audit():
     try:
         wp = connection_check()
         print(f"SEO_BOOTSTRAP wp_authenticated={wp['authenticated']} pages_read={len(wp['recent_pages'])}", flush=True)
-        for result in run_speed_batch(BTSA_PERFORMANCE_URLS):
-            url = result["url"]
-            for strategy in ("mobile", "desktop"):
-                item = result[strategy]
-                if item.get("ok"):
-                    print(
-                        f"PAGESPEED strategy={strategy} url={url} perf={item['scores']['performance']} "
-                        f"seo={item['scores']['seo']} lcp={item['lab']['lcp']['value_ms']} "
-                        f"cls={item['lab']['cls']['value']} ttfb={item['lab']['ttfb']['value_ms']} "
-                        f"field_lcp={item['field']['lcp_ms']} field_cls={item['field']['cls']} "
-                        f"field_ttfb={item['field']['ttfb_ms']} opps={item['opportunities'][:5]}",
-                        flush=True,
-                    )
-                else:
-                    print(f"PAGESPEED_FAILED strategy={strategy} url={url} error={item.get('error')}", flush=True)
         if os.getenv("SEO_BOOTSTRAP_FIX", "0") == "1":
             repairs = {
                 1078: {
@@ -56,6 +41,21 @@ def _bootstrap_audit():
                 f"ober_typo={'ober 160' in raw} meta_keys={sorted(meta.keys())}",
                 flush=True,
             )
+        for result in run_speed_batch(BTSA_PERFORMANCE_URLS):
+            url = result["url"]
+            for strategy in ("mobile", "desktop"):
+                item = result[strategy]
+                if item.get("ok"):
+                    print(
+                        f"PAGESPEED strategy={strategy} url={url} perf={item['scores']['performance']} "
+                        f"seo={item['scores']['seo']} lcp={item['lab']['lcp']['value_ms']} "
+                        f"cls={item['lab']['cls']['value']} ttfb={item['lab']['ttfb']['value_ms']} "
+                        f"field_lcp={item['field']['lcp_ms']} field_cls={item['field']['cls']} "
+                        f"field_ttfb={item['field']['ttfb_ms']} opps={item['opportunities'][:5]}",
+                        flush=True,
+                    )
+                else:
+                    print(f"PAGESPEED_FAILED strategy={strategy} url={url} error={item.get('error')}", flush=True)
     except Exception as exc:
         print(f"SEO_BOOTSTRAP_FAILED type={type(exc).__name__} detail={repr(exc)}", flush=True)
 
