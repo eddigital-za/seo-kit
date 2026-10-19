@@ -6,8 +6,9 @@ from app.security import require_agent_key
 from app.gsc import fetch_queries, GSCConfigurationError
 from app.scoring import score_gsc_rows
 from app.seo_kit import run_crawl, run_speed, run_speed_batch
+from app.wordpress import connection_check, WordPressConfigurationError
 
-app = FastAPI(title="BTSA SEO Agent", version="0.2.0")
+app = FastAPI(title="BTSA SEO Agent", version="0.3.0")
 
 BTSA_PERFORMANCE_URLS = [
     "https://biketransport.co.za/",
@@ -29,12 +30,25 @@ def health():
     return {
         "ok": True,
         "service": "btsa-seo-agent",
-        "version": "0.2.0",
+        "version": "0.3.0",
+        "wordpress_configured": all(bool(os.getenv(key, "").strip()) for key in ("WP_BASE_URL", "WP_USERNAME", "WP_APP_PASSWORD")),
         "domain": config["domain"],
         "market": config["market"]["country_name"],
         "wordpress_write_enabled": config["guardrails"]["wordpress_write_enabled"],
         "pagespeed_configured": bool(os.getenv("PAGESPEED_API_KEY", "").strip()),
     }
+
+
+@app.get("/wordpress/connection", dependencies=[Depends(require_agent_key)])
+def wordpress_connection():
+    try:
+        return connection_check()
+    except WordPressConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"WordPress request failed: {exc}")
 
 
 @app.post("/audit/technical", dependencies=[Depends(require_agent_key)])
