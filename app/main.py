@@ -8,7 +8,7 @@ from app.security import require_agent_key
 from app.gsc import fetch_queries, GSCConfigurationError
 from app.scoring import score_gsc_rows
 from app.seo_kit import run_crawl, run_speed, run_speed_batch
-from app.wordpress import connection_check, update_content, replace_content_text, WordPressConfigurationError
+from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, WordPressConfigurationError
 
 def _bootstrap_audit():
     try:
@@ -23,12 +23,21 @@ def _bootstrap_audit():
                 1217: {"ober 160": "over 160"},
             }
             for page_id, replacements in repairs.items():
-                result = replace_content_text(page_id, replacements, dry_run=False)
+                content_result = replace_content_text(page_id, replacements, dry_run=False)
+                elementor_result = replace_elementor_text(page_id, replacements, dry_run=False)
                 print(
-                    f"WP_REPAIR page={page_id} changed={result.get('write_actions_taken', 0) > 0} "
-                    f"matches={result.get('matches', [])} rollback_ready={result.get('rollback_ready', False)}",
+                    f"WP_REPAIR page={page_id} content_changed={content_result.get('write_actions_taken', 0) > 0} "
+                    f"elementor_changed={elementor_result.get('write_actions_taken', 0) > 0} "
+                    f"matches={sorted(set(content_result.get('matches', []) + elementor_result.get('matches', [])))}",
                     flush=True,
                 )
+            canonicals = {
+                1211: "https://biketransport.co.za/durban-johannesburg-motorcycle-transport/",
+                1036: "https://biketransport.co.za/johannesburg-and-cape-town/",
+            }
+            for page_id, canonical in canonicals.items():
+                result = rankmath_update_canonical(page_id, canonical)
+                print(f"CANONICAL_REPAIR page={page_id} canonical={canonical} writes={result['write_actions_taken']}", flush=True)
         for object_id in (1078, 1217, 1211, 1036):
             snap = update_content("pages", object_id, {}, dry_run=True)
             before = snap["before"]
