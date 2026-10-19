@@ -65,8 +65,11 @@ def _bootstrap_audit():
                     flush=True,
                 )
         if os.getenv("SEO_CLEAR_ELEMENTOR_CACHE", "0") == "1":
-            cache_result = elementor_clear_cache()
-            print(f"ELEMENTOR_CACHE_CLEAR cleared={cache_result['cleared']} status={cache_result['status']}", flush=True)
+            try:
+                cache_result = elementor_clear_cache()
+                print(f"ELEMENTOR_CACHE_CLEAR cleared={cache_result['cleared']} status={cache_result['status']}", flush=True)
+            except Exception as exc:
+                print(f"ELEMENTOR_CACHE_CLEAR_FAILED type={type(exc).__name__} detail={repr(exc)}", flush=True)
         if os.getenv("SEO_RENDER_VERIFY", "0") == "1":
             for url in BTSA_PERFORMANCE_URLS:
                 for suffix in ("", "?btsa_seo_verify=1"):
