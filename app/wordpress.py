@@ -391,30 +391,47 @@ def capture_estimator_backup(object_ids: tuple[int, ...], backup_dir: str = "bac
 
 
 def wp_rocket_purge_all() -> dict[str, Any]:
-    """Explicitly purge WP Rocket through its authenticated WordPress REST action if exposed."""
+    """Discover WP Rocket's actual REST route and explicitly purge only when a supported route exists."""
     base_url, username, app_password = _credentials()
     _assert_btsa_host(base_url)
-    candidates = (
-        ("POST", "/wp-json/wp-rocket/v1/cache/purge"),
-        ("POST", "/wp-json/wp-rocket/v1/cache/clear"),
-        ("DELETE", "/wp-json/wp-rocket/v1/cache"),
+    index = requests.get(
+        f"{base_url}/wp-json/",
+        auth=(username, app_password),
+        timeout=30,
+        headers={"User-Agent": "BTSA-SEO-Agent/0.4"},
     )
+    if not index.ok:
+        raise RuntimeError(f"WordPress REST index failed HTTP {index.status_code}")
+    payload = index.json()
+    routes = payload.get("routes") or {}
+    rocket_routes = sorted(route for route in routes if "rocket" in route.lower())
+    purge_candidates = [
+        route for route in rocket_routes
+        if any(token in route.lower() for token in ("purge", "clear", "cache"))
+    ]
     attempts = []
-    for method, url_path in candidates:
-        response = requests.request(
-            method,
-            f"{base_url}{url_path}",
-            auth=(username, app_password),
-            timeout=30,
-            headers={"User-Agent": "BTSA-SEO-Agent/0.4"},
-        )
-        attempts.append({"method": method, "path": url_path, "status": response.status_code})
-        if response.ok:
-            return {"cleared": True, "method": method, "path": url_path, "status": response.status_code, "attempts": attempts}
-        if response.status_code not in (404, 405):
-            break
-    return {"cleared": False, "attempts": attempts}
-
+    for route in purge_candidates:
+        route_info = routes.get(route) or {}
+        endpoints = route_info.get("endpoints") or []
+        methods = []
+        for endpoint in endpoints:
+            allowed = endpoint.get("methods") or []
+            if isinstance(allowed, list):
+                methods.extend(allowed)
+        for method in ("POST", "DELETE"):
+            if methods and method not in methods:
+                continue
+            response = requests.request(
+                method,
+                f"{base_url}/wp-json{route}",
+                auth=(username, app_password),
+                timeout=30,
+                headers={"User-Agent": "BTSA-SEO-Agent/0.4"},
+            )
+            attempts.append({"method": method, "route": route, "status": response.status_code})
+            if response.ok:
+                return {"cleared": True, "method": method, "route": route, "status": response.status_code, "attempts": attempts}
+    return {"cleared": False, "discovered_routes": rocket_routes, "attempts": attempts}
 
 def elementor_clear_cache() -> dict[str, Any]:
     base_url, username, app_password = _credentials()
