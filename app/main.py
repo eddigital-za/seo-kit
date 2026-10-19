@@ -14,8 +14,8 @@ def _bootstrap_audit():
     try:
         wp = connection_check()
         print(f"SEO_BOOTSTRAP wp_authenticated={wp['authenticated']} pages_read={len(wp['recent_pages'])}", flush=True)
-        for url in BTSA_PERFORMANCE_URLS:
-            result = run_speed(url)
+        for result in run_speed_batch(BTSA_PERFORMANCE_URLS):
+            url = result["url"]
             for strategy in ("mobile", "desktop"):
                 item = result[strategy]
                 if item.get("ok"):
