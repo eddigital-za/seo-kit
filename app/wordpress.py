@@ -127,3 +127,24 @@ def connection_check() -> dict[str, Any]:
         ],
         "write_actions_taken": 0,
     }
+
+
+def replace_content_text(object_id: int, replacements: dict[str, str], dry_run: bool = True) -> dict[str, Any]:
+    before = _get(
+        f"pages/{object_id}",
+        {"context": "edit", "_fields": "id,slug,status,modified_gmt,title,content,excerpt,meta"},
+    )
+    content = (before.get("content") or {}).get("raw", "")
+    changed = content
+    applied = []
+    for old, new in replacements.items():
+        if old in changed:
+            changed = changed.replace(old, new)
+            applied.append(old)
+    if not applied:
+        return {"page_id": object_id, "changed": False, "matches": [], "write_actions_taken": 0}
+    if dry_run:
+        return {"page_id": object_id, "changed": True, "matches": applied, "write_actions_taken": 0}
+    result = update_content("pages", object_id, {"content": changed}, dry_run=False)
+    result["matches"] = applied
+    return result
