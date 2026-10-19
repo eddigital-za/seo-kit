@@ -349,3 +349,19 @@ def optimize_post_content_estimator(object_id: int, dry_run: bool = True) -> dic
     result = update_content("pages", object_id, {"content": optimized}, dry_run=False)
     result["babel_removed"] = "@babel/standalone" not in optimized
     return result
+
+
+def elementor_clear_cache() -> dict[str, Any]:
+    base_url, username, app_password = _credentials()
+    _assert_btsa_host(base_url)
+    response = requests.delete(
+        f"{base_url}/wp-json/elementor/v1/cache",
+        auth=(username, app_password),
+        timeout=30,
+        headers={"User-Agent": "BTSA-SEO-Agent/0.4"},
+    )
+    if response.status_code in (401, 403):
+        raise PermissionError(f"Elementor cache permission failed ({response.status_code})")
+    if not response.ok:
+        raise RuntimeError(f"Elementor cache clear failed HTTP {response.status_code}")
+    return {"cleared": True, "status": response.status_code}
