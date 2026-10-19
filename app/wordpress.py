@@ -365,6 +365,57 @@ def optimize_post_content_estimator(object_id: int, dry_run: bool = True, backup
     return result
 
 
+
+def capture_estimator_backup(object_ids: tuple[int, ...], backup_dir: str = "backups") -> dict[str, Any]:
+    """Persist an exact pre-purge estimator rollback bundle and verify every page first."""
+    path = Path(backup_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    captured: dict[int, str] = {}
+    for object_id in object_ids:
+        html = get_estimator_html(object_id)
+        if "motorcycle-calculator-root" not in html or 'type="text/babel"' not in html:
+            raise RuntimeError(f"Estimator backup validation failed on page {object_id}")
+        captured[object_id] = html
+    unique = set(captured.values())
+    if len(unique) != 1:
+        raise RuntimeError("Estimator instances are not identical; refusing to create a single rollback baseline")
+    html = next(iter(unique))
+    encoded = base64.b64encode(html.encode("utf-8")).decode("ascii")
+    stamp = os.getenv("SEO_BACKUP_STAMP", "pre-cache-purge-2026-10-19")
+    backup_file = path / f"estimator-{stamp}.b64"
+    backup_file.write_text(encoded, encoding="utf-8")
+    readback = base64.b64decode(backup_file.read_text(encoding="utf-8")).decode("utf-8")
+    if readback != html:
+        raise RuntimeError("Estimator rollback backup read-back verification failed")
+    return {"backup_path": str(backup_file), "pages": list(object_ids), "bytes": len(html.encode("utf-8")), "verified": True}
+
+
+def wp_rocket_purge_all() -> dict[str, Any]:
+    """Explicitly purge WP Rocket through its authenticated WordPress REST action if exposed."""
+    base_url, username, app_password = _credentials()
+    _assert_btsa_host(base_url)
+    candidates = (
+        ("POST", "/wp-json/wp-rocket/v1/cache/purge"),
+        ("POST", "/wp-json/wp-rocket/v1/cache/clear"),
+        ("DELETE", "/wp-json/wp-rocket/v1/cache"),
+    )
+    attempts = []
+    for method, url_path in candidates:
+        response = requests.request(
+            method,
+            f"{base_url}{url_path}",
+            auth=(username, app_password),
+            timeout=30,
+            headers={"User-Agent": "BTSA-SEO-Agent/0.4"},
+        )
+        attempts.append({"method": method, "path": url_path, "status": response.status_code})
+        if response.ok:
+            return {"cleared": True, "method": method, "path": url_path, "status": response.status_code, "attempts": attempts}
+        if response.status_code not in (404, 405):
+            break
+    return {"cleared": False, "attempts": attempts}
+
+
 def elementor_clear_cache() -> dict[str, Any]:
     base_url, username, app_password = _credentials()
     _assert_btsa_host(base_url)
