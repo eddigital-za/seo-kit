@@ -60,7 +60,8 @@ def _bootstrap_audit():
                         f"seo={item['scores']['seo']} lcp={item['lab']['lcp']['value_ms']} "
                         f"cls={item['lab']['cls']['value']} ttfb={item['lab']['ttfb']['value_ms']} "
                         f"field_lcp={item['field']['lcp_ms']} field_cls={item['field']['cls']} "
-                        f"field_ttfb={item['field']['ttfb_ms']} opps={item['opportunities'][:5]}",
+                        f"field_ttfb={item['field']['ttfb_ms']} opps={item['opportunities'][:5]} "
+                        f"diag={item['diagnostics'] if strategy == 'mobile' else {}}",
                         flush=True,
                     )
                 else:
