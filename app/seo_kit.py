@@ -1,5 +1,6 @@
 import os
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -54,7 +55,7 @@ def run_pagespeed(url: str, strategy: str):
     endpoint = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed?" + urlencode(params)
 
     try:
-        response = requests.get(endpoint, timeout=120, headers={"User-Agent": "BTSA-SEO-Agent/1.0"})
+        response = requests.get(endpoint, timeout=60, headers={"User-Agent": "BTSA-SEO-Agent/1.0"})
         data = response.json()
     except Exception as exc:
         return {"ok": False, "url": url, "strategy": strategy, "error": str(exc)}
@@ -133,11 +134,17 @@ def run_speed(site_url: str):
 
 
 def run_speed_batch(urls):
-    results = []
-    for url in urls:
-        results.append({
-            "url": url,
-            "mobile": run_pagespeed(url, "mobile"),
-            "desktop": run_pagespeed(url, "desktop"),
-        })
-    return results
+    results = {url: {"url": url} for url in urls}
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = {
+            pool.submit(run_pagespeed, url, strategy): (url, strategy)
+            for url in urls
+            for strategy in ("mobile", "desktop")
+        }
+        for future in as_completed(futures):
+            url, strategy = futures[future]
+            try:
+                results[url][strategy] = future.result()
+            except Exception as exc:
+                results[url][strategy] = {"ok": False, "url": url, "strategy": strategy, "error": str(exc)}
+    return [results[url] for url in urls]
