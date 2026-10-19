@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
 COPY config ./config
 COPY skills ./skills
+COPY backups ./backups
 
 ENV SEO_KIT_DIR=/app
 ENV PORT=8080
