@@ -242,6 +242,7 @@ def replace_estimator_html(object_id: int, new_html: str, dry_run: bool = True) 
     data = meta.get("_elementor_data") or ""
     tree = json.loads(data)
     changed = False
+    replacements = 0
     stack = list(tree if isinstance(tree, list) else [tree])
     while stack:
         item = stack.pop()
@@ -252,14 +253,16 @@ def replace_estimator_html(object_id: int, new_html: str, dry_run: bool = True) 
         if isinstance(html, str) and 'type="text/babel"' in html:
             settings["html"] = new_html
             changed = True
-            break
+            replacements += 1
         stack.extend(item.get("elements") or [])
     if not changed:
-        return {"page_id": object_id, "changed": False, "write_actions_taken": 0}
+        return {"page_id": object_id, "changed": False, "replacements": 0, "write_actions_taken": 0}
     if dry_run:
         return {"page_id": object_id, "changed": True, "write_actions_taken": 0}
     compact = json.dumps(tree, separators=(",", ":"), ensure_ascii=False)
-    return update_content("pages", object_id, {"meta": {"_elementor_data": compact}}, dry_run=False)
+    result = update_content("pages", object_id, {"meta": {"_elementor_data": compact}}, dry_run=False)
+    result["replacements"] = replacements
+    return result
 
 
 def optimize_estimator_widget(object_id: int, dry_run: bool = True) -> dict[str, Any]:
