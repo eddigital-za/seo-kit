@@ -291,7 +291,7 @@ def optimize_estimator_widget(object_id: int, dry_run: bool = True) -> dict[str,
     )
     optimized = re.sub(
         r'<script\s+type=["\']text/babel["\']>.*?</script>',
-        "<script>\n" + compiled + "\n</script>",
+        lambda _match: "<script>\n" + compiled + "\n</script>",
         optimized,
         count=1,
         flags=re.I | re.S,
