@@ -10,7 +10,7 @@ from app.security import require_agent_key
 from app.gsc import fetch_queries, GSCConfigurationError
 from app.scoring import score_gsc_rows
 from app.seo_kit import run_crawl, run_speed, run_speed_batch
-from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, inspect_elementor_assets, get_estimator_html, optimize_estimator_widget, optimize_post_content_estimator, elementor_clear_cache, WordPressConfigurationError
+from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, inspect_elementor_assets, get_estimator_html, optimize_estimator_widget, optimize_post_content_estimator, elementor_clear_cache, restore_estimator_from_backup, WordPressConfigurationError
 
 def _bootstrap_audit():
     try:
@@ -52,6 +52,17 @@ def _bootstrap_audit():
                 f"ober_typo={'ober 160' in raw} meta_keys={sorted(meta.keys())}",
                 flush=True,
             )
+        if os.getenv("SEO_RESTORE_ESTIMATOR", "0") == "1":
+            backup_path = "backups/estimator-known-working-2026-10-19.b64"
+            for page_id in (275, 1211, 1078, 1036, 1217, 1234):
+                result = restore_estimator_from_backup(page_id, backup_path)
+                print(
+                    f"ESTIMATOR_RESTORE page={page_id} writes={result['write_actions_taken']} "
+                    f"elementor={result['elementor_replacements']} content={result['content_changed']} "
+                    f"babel={result['babel_restored']} exact={result['verified_exact_backup']} "
+                    f"backup={result['backup_ref']}",
+                    flush=True,
+                )
         if os.getenv("SEO_OPTIMIZE_ESTIMATOR", "0") == "1":
             for page_id in (275, 1211, 1078, 1036, 1217, 1234):
                 elementor_result = optimize_estimator_widget(page_id, dry_run=False)
