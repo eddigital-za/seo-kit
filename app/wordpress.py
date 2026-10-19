@@ -58,7 +58,7 @@ def _get(path: str, params: dict[str, Any] | None = None) -> Any:
 
 def connection_check() -> dict[str, Any]:
     users = _get("users/me", {"context": "edit"})
-    pages = _get("pages", {"context": "edit", "per_page": 5, "orderby": "modified", "order": "desc"})
+    pages = _get("pages", {"context": "edit", "per_page": 5, "orderby": "modified", "order": "desc", "_fields": "id,slug,status,modified_gmt"})
     return {
         "authenticated": True,
         "user": {
