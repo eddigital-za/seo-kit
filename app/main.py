@@ -8,7 +8,7 @@ from app.security import require_agent_key
 from app.gsc import fetch_queries, GSCConfigurationError
 from app.scoring import score_gsc_rows
 from app.seo_kit import run_crawl, run_speed, run_speed_batch
-from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, WordPressConfigurationError
+from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, inspect_elementor_assets, WordPressConfigurationError
 
 def _bootstrap_audit():
     try:
@@ -50,6 +50,10 @@ def _bootstrap_audit():
                 f"ober_typo={'ober 160' in raw} meta_keys={sorted(meta.keys())}",
                 flush=True,
             )
+        if os.getenv("SEO_ESTIMATOR_INSPECT", "0") == "1":
+            for page_id in (275, 1211, 1078, 1036, 1217, 1234):
+                asset_info = inspect_elementor_assets(page_id)
+                print(f"ESTIMATOR_ASSETS {asset_info}", flush=True)
         for result in run_speed_batch(BTSA_PERFORMANCE_URLS):
             url = result["url"]
             for strategy in ("mobile", "desktop"):
