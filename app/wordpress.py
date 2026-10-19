@@ -199,3 +199,16 @@ def rankmath_update_canonical(object_id: int, canonical_url: str) -> dict[str, A
     except ValueError as exc:
         raise RuntimeError(f"Rank Math returned invalid JSON; status={response.status_code}") from exc
     return {"page_id": object_id, "canonical": canonical_url, "response": payload, "write_actions_taken": 1}
+
+
+def inspect_elementor_assets(object_id: int) -> dict[str, Any]:
+    page = _get(f"pages/{object_id}", {"context": "edit", "_fields": "id,slug,meta"})
+    data = ((page.get("meta") or {}).get("_elementor_data") or "")
+    needles = ("babel", "tailwindcss", "text/babel", "unpkg.com/react")
+    snippets = {}
+    lower = data.lower()
+    for needle in needles:
+        pos = lower.find(needle.lower())
+        if pos >= 0:
+            snippets[needle] = data[max(0, pos - 800): min(len(data), pos + 2200)]
+    return {"page_id": object_id, "slug": page.get("slug"), "bytes": len(data), "snippets": snippets}
