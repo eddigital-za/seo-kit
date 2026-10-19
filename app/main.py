@@ -1,5 +1,6 @@
 import os
 from fastapi import Depends, FastAPI, HTTPException
+from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from app.settings import load_config
 from app.security import require_agent_key
@@ -8,7 +9,17 @@ from app.scoring import score_gsc_rows
 from app.seo_kit import run_crawl, run_speed, run_speed_batch
 from app.wordpress import connection_check, WordPressConfigurationError
 
-app = FastAPI(title="BTSA SEO Agent", version="0.3.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if os.getenv("WP_VERIFY_ON_STARTUP", "0") == "1":
+        try:
+            result = connection_check()
+            print(f"WP_VERIFY authenticated={result['authenticated']} user_id={result['user']['id']} pages_read={len(result['recent_pages'])} write_actions={result['write_actions_taken']}", flush=True)
+        except Exception as exc:
+            print(f"WP_VERIFY failed type={type(exc).__name__} detail={exc}", flush=True)
+    yield
+
+app = FastAPI(title="BTSA SEO Agent", version="0.3.1", lifespan=lifespan)
 
 BTSA_PERFORMANCE_URLS = [
     "https://biketransport.co.za/",
@@ -30,7 +41,7 @@ def health():
     return {
         "ok": True,
         "service": "btsa-seo-agent",
-        "version": "0.3.0",
+        "version": "0.3.1",
         "wordpress_configured": all(bool(os.getenv(key, "").strip()) for key in ("WP_BASE_URL", "WP_USERNAME", "WP_APP_PASSWORD")),
         "domain": config["domain"],
         "market": config["market"]["country_name"],
