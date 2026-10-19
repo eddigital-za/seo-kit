@@ -1,5 +1,6 @@
 import os
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 
@@ -19,41 +20,42 @@ def _credentials() -> tuple[str, str, str]:
     return base_url, username, app_password
 
 
-def _get(path: str, params: dict[str, Any] | None = None) -> Any:
+def _assert_btsa_host(base_url: str) -> None:
+    host = (urlparse(base_url).hostname or "").lower()
+    if host not in {"biketransport.co.za", "www.biketransport.co.za"}:
+        raise WordPressConfigurationError(f"Refusing WordPress access to unapproved host: {host}")
+
+
+def _request(method: str, path: str, params: dict[str, Any] | None = None, payload: dict[str, Any] | None = None) -> Any:
     base_url, username, app_password = _credentials()
-    response = requests.get(
+    _assert_btsa_host(base_url)
+    response = requests.request(
+        method,
         f"{base_url}/wp-json/wp/v2/{path.lstrip('/')}",
         params=params,
+        json=payload,
         auth=(username, app_password),
         timeout=30,
-        headers={"User-Agent": "BTSA-SEO-Agent/0.3"},
+        headers={"User-Agent": "BTSA-SEO-Agent/0.4"},
     )
-    if response.status_code in (401, 403):
-        raise PermissionError(
-            f"WordPress authentication/permission failed ({response.status_code})"
-        )
-    content_type = response.headers.get("content-type", "")
-    if not response.ok:
-        preview = response.text[:240].replace("\n", " ").replace("\r", " ")
-        raise RuntimeError(
-            f"WordPress HTTP {response.status_code}; content_type={content_type}; "
-            f"url={response.url}; preview={preview!r}"
-        )
-    if "json" not in content_type.lower():
-        preview = response.text[:240].replace("\n", " ").replace("\r", " ")
-        raise RuntimeError(
-            f"WordPress returned non-JSON response; status={response.status_code}; "
-            f"content_type={content_type}; url={response.url}; preview={preview!r}"
-        )
-    try:
-        return response.json()
-    except ValueError as exc:
-        preview = response.text[:500].replace("\n", " ").replace("\r", " ")
-        raise RuntimeError(
-            f"WordPress JSON parse failed; status={response.status_code}; "
-            f"content_type={content_type}; url={response.url}; bytes={len(response.content)}; "
-            f"preview={preview!r}"
-        ) from exc
+
+def _get(path: str, params: dict[str, Any] | None = None) -> Any:
+    return _request("GET", path, params=params)
+
+
+def update_content(object_type: str, object_id: int, fields: dict[str, Any], dry_run: bool = True) -> dict[str, Any]:
+    if object_type not in {"pages", "posts"}:
+        raise ValueError("object_type must be pages or posts")
+    allowed = {"title", "content", "excerpt", "status", "slug", "meta"}
+    unknown = set(fields) - allowed
+    if unknown:
+        raise ValueError(f"Unsupported WordPress fields: {sorted(unknown)}")
+    before = _get(f"{object_type}/{object_id}", {"context": "edit", "_fields": "id,slug,status,modified_gmt,title,excerpt,meta"})
+    if dry_run:
+        return {"dry_run": True, "before": before, "proposed_fields": fields, "write_actions_taken": 0}
+    updated = _request("POST", f"{object_type}/{object_id}", payload=fields)
+    verify = _get(f"{object_type}/{object_id}", {"context": "edit", "_fields": "id,slug,status,modified_gmt,title,excerpt,meta"})
+    return {"dry_run": False, "before": before, "updated": updated, "verified": verify, "write_actions_taken": 1}
 
 
 def connection_check() -> dict[str, Any]:
