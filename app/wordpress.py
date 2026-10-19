@@ -48,6 +48,13 @@ def _request(method: str, path: str, params: dict[str, Any] | None = None, paylo
     try:
         return response.json()
     except ValueError as exc:
+        text = response.text
+        candidates = [pos for token in ('{"id":', '[{"id":') if (pos := text.find(token)) >= 0]
+        if candidates:
+            try:
+                return requests.models.complexjson.loads(text[min(candidates):])
+            except ValueError:
+                pass
         raise RuntimeError(
             f"WordPress JSON parse failed; status={response.status_code}; content_type={content_type}; "
             f"url={response.url}; bytes={len(response.content)}"
@@ -64,12 +71,38 @@ def update_content(object_type: str, object_id: int, fields: dict[str, Any], dry
     unknown = set(fields) - allowed
     if unknown:
         raise ValueError(f"Unsupported WordPress fields: {sorted(unknown)}")
-    before = _get(f"{object_type}/{object_id}", {"context": "edit", "_fields": "id,slug,status,modified_gmt,title,excerpt,meta"})
+    before = _get(
+        f"{object_type}/{object_id}",
+        {"context": "edit", "_fields": "id,slug,status,modified_gmt,title,content,excerpt,meta"},
+    )
     if dry_run:
         return {"dry_run": True, "before": before, "proposed_fields": fields, "write_actions_taken": 0}
     updated = _request("POST", f"{object_type}/{object_id}", payload=fields)
-    verify = _get(f"{object_type}/{object_id}", {"context": "edit", "_fields": "id,slug,status,modified_gmt,title,excerpt,meta"})
-    return {"dry_run": False, "before": before, "updated": updated, "verified": verify, "write_actions_taken": 1}
+    try:
+        verify = _get(
+            f"{object_type}/{object_id}",
+            {"context": "edit", "_fields": "id,slug,status,modified_gmt,title,content,excerpt,meta"},
+        )
+    except Exception:
+        rollback = {}
+        for key in ("title", "content", "excerpt"):
+            value = before.get(key)
+            if isinstance(value, dict) and "raw" in value:
+                rollback[key] = value["raw"]
+        for key in ("status", "slug"):
+            if before.get(key):
+                rollback[key] = before[key]
+        if rollback:
+            _request("POST", f"{object_type}/{object_id}", payload=rollback)
+        raise
+    return {
+        "dry_run": False,
+        "backup": before,
+        "updated_id": updated.get("id"),
+        "verified": verify,
+        "rollback_ready": True,
+        "write_actions_taken": 1,
+    }
 
 
 def connection_check() -> dict[str, Any]:
