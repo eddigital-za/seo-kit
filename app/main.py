@@ -7,7 +7,7 @@ from app.security import require_agent_key
 from app.gsc import fetch_queries, GSCConfigurationError
 from app.scoring import score_gsc_rows
 from app.seo_kit import run_crawl, run_speed, run_speed_batch
-from app.wordpress import connection_check, WordPressConfigurationError
+from app.wordpress import connection_check, update_content, WordPressConfigurationError
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):
             print(f"WP_VERIFY failed type={type(exc).__name__} detail={repr(exc)}", flush=True)
     yield
 
-app = FastAPI(title="BTSA SEO Agent", version="0.3.1", lifespan=lifespan)
+app = FastAPI(title="BTSA SEO Agent", version="0.4.0", lifespan=lifespan)
 
 BTSA_PERFORMANCE_URLS = [
     "https://biketransport.co.za/",
@@ -35,13 +35,20 @@ class SpeedBatchRequest(BaseModel):
     urls: list[str] | None = None
 
 
+class WordPressUpdateRequest(BaseModel):
+    object_type: str
+    object_id: int
+    fields: dict
+    dry_run: bool = True
+
+
 @app.get("/health")
 def health():
     config = load_config()
     return {
         "ok": True,
         "service": "btsa-seo-agent",
-        "version": "0.3.1",
+        "version": "0.4.0",
         "wordpress_configured": all(bool(os.getenv(key, "").strip()) for key in ("WP_BASE_URL", "WP_USERNAME", "WP_APP_PASSWORD")),
         "domain": config["domain"],
         "market": config["market"]["country_name"],
@@ -60,6 +67,21 @@ def wordpress_connection():
         raise HTTPException(status_code=403, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"WordPress request failed: {exc}")
+
+
+@app.post("/wordpress/update", dependencies=[Depends(require_agent_key)])
+def wordpress_update(request: WordPressUpdateRequest):
+    config = load_config()
+    if not request.dry_run and not config["guardrails"]["wordpress_write_enabled"]:
+        raise HTTPException(status_code=403, detail="WordPress writes are disabled by guardrail")
+    try:
+        return update_content(request.object_type, request.object_id, request.fields, dry_run=request.dry_run)
+    except (WordPressConfigurationError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"WordPress update failed: {exc}")
 
 
 @app.post("/audit/technical", dependencies=[Depends(require_agent_key)])
