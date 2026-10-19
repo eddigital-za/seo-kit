@@ -45,7 +45,15 @@ def _get(path: str, params: dict[str, Any] | None = None) -> Any:
             f"WordPress returned non-JSON response; status={response.status_code}; "
             f"content_type={content_type}; url={response.url}; preview={preview!r}"
         )
-    return response.json()
+    try:
+        return response.json()
+    except ValueError as exc:
+        preview = response.text[:500].replace("\n", " ").replace("\r", " ")
+        raise RuntimeError(
+            f"WordPress JSON parse failed; status={response.status_code}; "
+            f"content_type={content_type}; url={response.url}; bytes={len(response.content)}; "
+            f"preview={preview!r}"
+        ) from exc
 
 
 def connection_check() -> dict[str, Any]:
