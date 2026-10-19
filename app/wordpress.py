@@ -148,3 +148,54 @@ def replace_content_text(object_id: int, replacements: dict[str, str], dry_run: 
     result = update_content("pages", object_id, {"content": changed}, dry_run=False)
     result["matches"] = applied
     return result
+
+
+def replace_elementor_text(object_id: int, replacements: dict[str, str], dry_run: bool = True) -> dict[str, Any]:
+    before = _get(
+        f"pages/{object_id}",
+        {"context": "edit", "_fields": "id,slug,status,modified_gmt,meta"},
+    )
+    meta = before.get("meta") or {}
+    elementor_data = meta.get("_elementor_data", "")
+    if not isinstance(elementor_data, str):
+        raise RuntimeError("Elementor data is not a string")
+    changed = elementor_data
+    applied = []
+    for old, new in replacements.items():
+        if old in changed:
+            changed = changed.replace(old, new)
+            applied.append(old)
+    if not applied:
+        return {"page_id": object_id, "changed": False, "matches": [], "write_actions_taken": 0}
+    if dry_run:
+        return {"page_id": object_id, "changed": True, "matches": applied, "write_actions_taken": 0}
+    result = update_content("pages", object_id, {"meta": {"_elementor_data": changed}}, dry_run=False)
+    result["matches"] = applied
+    return result
+
+
+def rankmath_update_canonical(object_id: int, canonical_url: str) -> dict[str, Any]:
+    base_url, username, app_password = _credentials()
+    _assert_btsa_host(base_url)
+    if not canonical_url.startswith("https://biketransport.co.za/"):
+        raise ValueError("Canonical must stay on biketransport.co.za")
+    response = requests.post(
+        f"{base_url}/wp-json/rankmath/v1/updateMeta",
+        json={
+            "objectType": "post",
+            "objectID": object_id,
+            "meta": {"rank_math_canonical_url": canonical_url},
+        },
+        auth=(username, app_password),
+        timeout=30,
+        headers={"User-Agent": "BTSA-SEO-Agent/0.4"},
+    )
+    if response.status_code in (401, 403):
+        raise PermissionError(f"Rank Math authentication/permission failed ({response.status_code})")
+    if not response.ok:
+        raise RuntimeError(f"Rank Math HTTP {response.status_code}; url={response.url}")
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise RuntimeError(f"Rank Math returned invalid JSON; status={response.status_code}") from exc
+    return {"page_id": object_id, "canonical": canonical_url, "response": payload, "write_actions_taken": 1}
