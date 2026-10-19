@@ -38,6 +38,20 @@ def _request(method: str, path: str, params: dict[str, Any] | None = None, paylo
         timeout=30,
         headers={"User-Agent": "BTSA-SEO-Agent/0.4"},
     )
+    if response.status_code in (401, 403):
+        raise PermissionError(f"WordPress authentication/permission failed ({response.status_code})")
+    content_type = response.headers.get("content-type", "")
+    if not response.ok:
+        raise RuntimeError(f"WordPress HTTP {response.status_code}; content_type={content_type}; url={response.url}")
+    if "json" not in content_type.lower():
+        raise RuntimeError(f"WordPress returned non-JSON response; status={response.status_code}; content_type={content_type}; url={response.url}")
+    try:
+        return response.json()
+    except ValueError as exc:
+        raise RuntimeError(
+            f"WordPress JSON parse failed; status={response.status_code}; content_type={content_type}; "
+            f"url={response.url}; bytes={len(response.content)}"
+        ) from exc
 
 def _get(path: str, params: dict[str, Any] | None = None) -> Any:
     return _request("GET", path, params=params)
