@@ -1,0 +1,643 @@
+<!-- Load Required Libraries -->
+<!-- Google tag for BTSA Google Ads account -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=AW-17634803083"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'AW-17634803083');
+</script>
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.5/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Calculator Container -->
+<div id="motorcycle-calculator-root"></div>
+
+<!-- Calculator Script -->
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+
+// ==============================
+// SERVER-SIDE QUOTE ENGINE CONFIG
+// ==============================
+// Pricing logic, ORS API key, Apps Script URL and route rules now live in the
+// BTSA Quote Engine WordPress plugin. The browser only asks the server for:
+// location suggestions, distance, quote result and lead submission.
+const BTSA_API_BASE = '/wp-json/btsa/v1';
+
+// Railway lead service. This is an additional lead event destination only.
+// The existing BTSA WordPress lead submission remains unchanged below.
+const BTSA_RAILWAY_LEAD_URL = 'https://btsa-lead-followup-whatsapp-production.up.railway.app/lead';
+
+// Capture the latest non-direct traffic source for lead attribution.
+// Attribution is retained for 90 days so it survives navigation and return visits.
+const BTSA_ATTRIBUTION_STORAGE_KEY = 'btsa_lead_attribution';
+const BTSA_ATTRIBUTION_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+
+function btsaGetStoredAttribution() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(BTSA_ATTRIBUTION_STORAGE_KEY) || 'null');
+    if (!stored || !stored.capturedAt) return null;
+    if (Date.now() - Number(stored.capturedAt) > BTSA_ATTRIBUTION_MAX_AGE_MS) {
+      localStorage.removeItem(BTSA_ATTRIBUTION_STORAGE_KEY);
+      return null;
+    }
+    return stored;
+  } catch (error) {
+    return null;
+  }
+}
+
+function btsaCaptureLeadAttribution() {
+  const params = new URLSearchParams(window.location.search);
+  const referrer = document.referrer || '';
+  let referrerHost = '';
+
+  try {
+    referrerHost = referrer ? new URL(referrer).hostname.replace(/^www\./, '') : '';
+  } catch (error) {
+    referrerHost = '';
+  }
+
+  const gclid = params.get('gclid') || '';
+  const wbraid = params.get('wbraid') || '';
+  const gbraid = params.get('gbraid') || '';
+  const fbclid = params.get('fbclid') || '';
+  const utmSource = params.get('utm_source') || '';
+  const utmMedium = params.get('utm_medium') || '';
+  const utmCampaign = params.get('utm_campaign') || '';
+  const utmContent = params.get('utm_content') || '';
+  const utmTerm = params.get('utm_term') || '';
+  const hasCampaignData = Boolean(
+    utmSource || utmMedium || utmCampaign || utmContent || utmTerm ||
+    gclid || wbraid || gbraid || fbclid
+  );
+
+  let leadSource = utmSource;
+  let leadMedium = utmMedium;
+
+  if (!leadSource && (gclid || wbraid || gbraid)) {
+    leadSource = 'google';
+    leadMedium = leadMedium || 'cpc';
+  } else if (!leadSource && fbclid) {
+    leadSource = 'facebook';
+    leadMedium = leadMedium || 'paid_social';
+  } else if (!leadSource && referrerHost) {
+    if (/^(www\.)?google\./i.test(referrerHost)) {
+      leadSource = 'google';
+      leadMedium = 'organic';
+    } else if (/^(www\.)?bing\.com$/i.test(referrerHost)) {
+      leadSource = 'bing';
+      leadMedium = 'organic';
+    } else {
+      leadSource = referrerHost;
+      leadMedium = 'referral';
+    }
+  }
+
+  const currentAttribution = {
+    leadSource: leadSource || 'direct',
+    leadMedium: leadMedium || '(none)',
+    campaign: utmCampaign,
+    adContent: utmContent,
+    keyword: utmTerm,
+    gclid,
+    wbraid,
+    gbraid,
+    fbclid,
+    landingPage: window.location.href,
+    referrer,
+    capturedAt: Date.now()
+  };
+
+  const storedAttribution = btsaGetStoredAttribution();
+  const shouldStoreCurrent = hasCampaignData || Boolean(referrerHost) || !storedAttribution;
+
+  if (shouldStoreCurrent) {
+    try {
+      localStorage.setItem(BTSA_ATTRIBUTION_STORAGE_KEY, JSON.stringify(currentAttribution));
+    } catch (error) {
+      // Attribution storage failure must never block the quote estimator.
+    }
+    return currentAttribution;
+  }
+
+  return storedAttribution;
+}
+
+const BTSA_LEAD_ATTRIBUTION = btsaCaptureLeadAttribution();
+
+async function btsaPost(endpoint, payload) {
+  const resp = await fetch(`${BTSA_API_BASE}${endpoint}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload || {})
+  });
+
+  const text = await resp.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (e) { data = null; }
+
+  if (!resp.ok) {
+    const message = data?.message || data?.data?.message || text || 'Request failed';
+    throw new Error(message);
+  }
+
+  return data;
+}
+
+const searchLocations = async (query) => {
+  if (!query || query.length < 3) return [];
+  try {
+    return await btsaPost('/search-locations', { query });
+  } catch (error) {
+    console.error('Error fetching locations:', error);
+    return [];
+  }
+};
+
+async function calculateDrivingDistanceKm(pickupCoord, dropCoord) {
+  const data = await btsaPost('/distance', {
+    pickupCoord,
+    dropoffCoord
+  });
+  return data?.distance || 0;
+}
+
+function formatPriceOrManual(estimate) {
+  if (!estimate) return '';
+  if (estimate.manualReview) return 'Manual route review required';
+  return `R${Number(estimate.finalPrice || 0).toLocaleString()}`;
+}
+
+// ==============================
+// UI COMPONENTS
+// ==============================
+
+const LocationInput = React.memo(({ label, value, onChange, placeholder, onLocationSelect }) => {
+  const [suggestions, setSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleInputChange = async (e) => {
+    const inputValue = e.target.value;
+    onChange(inputValue);
+
+    if (inputValue.length > 2) {
+      setIsLoading(true);
+      const locations = await searchLocations(inputValue);
+      setSuggestions(locations);
+      setShowSuggestions(true);
+      setIsLoading(false);
+    } else {
+      setShowSuggestions(false);
+      setSuggestions([]);
+    }
+  };
+
+  return (
+    <div style={{ position: 'relative', marginBottom: '1rem' }}>
+      <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.25rem' }}>{label}</label>
+      <div style={{ position: 'relative' }}>
+        <span style={{ position: 'absolute', left: '0.75rem', top: '0.75rem', color: '#9CA3AF' }}>📍</span>
+        <input
+          type="text"
+          value={value}
+          onChange={handleInputChange}
+          placeholder={placeholder}
+          style={{ width: '100%', paddingLeft: '2.5rem', paddingRight: '0.75rem', paddingTop: '0.5rem', paddingBottom: '0.5rem', border: '1px solid #D1D5DB', borderRadius: '0.375rem', fontSize: '1rem' }}
+        />
+        {isLoading && (
+          <div style={{ position: 'absolute', right: '0.75rem', top: '0.75rem' }}>
+            <div style={{ width: '1rem', height: '1rem', border: '2px solid #3B82F6', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+          </div>
+        )}
+      </div>
+
+      {showSuggestions && suggestions.length > 0 && (
+        <div style={{ position: 'absolute', zIndex: 10, width: '100%', marginTop: '0.25rem', backgroundColor: 'white', border: '1px solid #D1D5DB', borderRadius: '0.375rem', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', maxHeight: '10rem', overflowY: 'auto' }}>
+          {suggestions.map((s, i) => (
+            <div
+              key={i}
+              onClick={() => {
+                onChange(s.label);
+                setShowSuggestions(false);
+                setSuggestions([]);
+                onLocationSelect(s.coordinates);
+              }}
+              style={{ padding: '0.5rem 0.75rem', cursor: 'pointer', fontSize: '0.875rem' }}
+              onMouseEnter={(e) => e.target.style.backgroundColor = '#F3F4F6'}
+              onMouseLeave={(e) => e.target.style.backgroundColor = 'white'}
+            >
+              {s.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+});
+
+const MotorcycleCalculator = () => {
+  const [formData, setFormData] = useState({
+    pickupLocation: '',
+    dropoffLocation: '',
+    distance: '',
+    motorcycleType: '',
+    bikeMake: '',
+    bikeModel: '',
+    urgency: '',
+    name: '',
+    email: '',
+    phone: ''
+  });
+
+  const [estimate, setEstimate] = useState(null);
+  const [currentStep, setCurrentStep] = useState('calculator');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [locationCoords, setLocationCoords] = useState({ pickup: null, dropoff: null });
+
+  const motorcycleTypes = [
+    { value: 'std_bike',   label: 'Standard Motorcycle',               multiplier: 1.00 },
+    { value: 'heavy_bike', label: 'Large/Heavy Bike (>300kg)',         multiplier: 1.10 },
+    { value: 'quad',       label: 'Quad / Trike',                      multiplier: 1.50 },
+    { value: 'trailer',    label: 'Trailer / Jet Ski (compact)',       multiplier: 1.75 },
+    { value: 'boat',       label: 'Boat / Caravan (large/oversized)',  multiplier: 2.00 },
+  ];
+
+  const urgencyOptions = [
+    { value: 'budget',   label: '10–14+ Days',    modifier: 1.00 },
+    { value: '7-10days', label: '7–10 Days',      modifier: 1.00 },
+    { value: 'fast',     label: '24–72 Hours',    modifier: 1.10 },
+    { value: 'express',  label: 'Same/Next Day',  modifier: 1.20 },
+  ];
+
+  useEffect(() => {
+    const run = async () => {
+      if (locationCoords.pickup && locationCoords.dropoff) {
+        setFormData(prev => ({ ...prev, distance: 'Calculating...' }));
+        try {
+          const km = await calculateDrivingDistanceKm(locationCoords.pickup, locationCoords.dropoff);
+          setFormData(prev => ({ ...prev, distance: km ? km.toString() : '' }));
+        } catch (e) {
+          console.error('Error calculating distance:', e);
+          const fallbackKm = estimateRoadDistanceFromCoordsKm(locationCoords.pickup, locationCoords.dropoff);
+          setFormData(prev => ({ ...prev, distance: fallbackKm ? fallbackKm.toString() : '' }));
+        }
+      } else {
+        setFormData(prev => ({ ...prev, distance: '' }));
+      }
+    };
+    run();
+  }, [locationCoords.pickup, locationCoords.dropoff]);
+
+  const calculateEstimate = async () => {
+    if (!formData.pickupLocation || !formData.dropoffLocation) {
+      alert('Please enter pickup and drop-off locations');
+      return;
+    }
+
+    if (!formData.motorcycleType || !formData.bikeMake || !formData.bikeModel || !formData.urgency) {
+      alert('Please fill in all required fields including bike make and model');
+      return;
+    }
+
+    try {
+      const quote = await btsaPost('/quote', {
+        pickupLocation: formData.pickupLocation,
+        dropoffLocation: formData.dropoffLocation,
+        pickupCoords: locationCoords.pickup,
+        dropoffCoords: locationCoords.dropoff,
+        motorcycleType: formData.motorcycleType,
+        urgency: formData.urgency,
+        bikeMake: formData.bikeMake,
+        bikeModel: formData.bikeModel
+      });
+
+      if (!quote || (!quote.manualReview && !quote.finalPrice)) {
+        throw new Error('Quote could not be calculated.');
+      }
+
+      setEstimate(quote);
+      setFormData(prev => ({ ...prev, distance: quote.distance ? String(quote.distance) : prev.distance }));
+      setCurrentStep('contact');
+    } catch (error) {
+      console.error('Quote error:', error);
+      alert(error.message || 'Quote could not be calculated. Please try again.');
+    }
+  };
+
+
+  const handleSubmitContact = async () => {
+    if (!formData.name || !formData.email || !formData.phone) {
+      alert('Please fill in all contact details');
+      return;
+    }
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
+    try {
+      const leadResponse = await btsaPost('/lead', {
+        quoteToken: estimate.quoteToken,
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        pickupLocation: formData.pickupLocation,
+        dropoffLocation: formData.dropoffLocation,
+        bikeMake: formData.bikeMake,
+        bikeModel: formData.bikeModel,
+        leadSource: BTSA_LEAD_ATTRIBUTION.leadSource,
+        leadMedium: BTSA_LEAD_ATTRIBUTION.leadMedium,
+        campaign: BTSA_LEAD_ATTRIBUTION.campaign,
+        adContent: BTSA_LEAD_ATTRIBUTION.adContent,
+        keyword: BTSA_LEAD_ATTRIBUTION.keyword,
+        gclid: BTSA_LEAD_ATTRIBUTION.gclid,
+        wbraid: BTSA_LEAD_ATTRIBUTION.wbraid,
+        gbraid: BTSA_LEAD_ATTRIBUTION.gbraid,
+        fbclid: BTSA_LEAD_ATTRIBUTION.fbclid,
+        landingPage: BTSA_LEAD_ATTRIBUTION.landingPage,
+        referrer: BTSA_LEAD_ATTRIBUTION.referrer
+      });
+
+      if (!leadResponse || leadResponse.ok !== true) {
+        throw new Error('The server did not confirm that your enquiry was saved.');
+      }
+
+      // Mirror the successfully submitted lead to Railway for server-side
+      // auto-reply, reply tracking, follow-up and reporting.
+      // This does NOT replace or alter the existing WordPress lead submission above.
+      try {
+        const railwayResp = await fetch(BTSA_RAILWAY_LEAD_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            submittedAt: new Date().toISOString(),
+            name: formData.name,
+            email: formData.email,
+            phone: formData.phone,
+            pickup: formData.pickupLocation,
+            dropoff: formData.dropoffLocation,
+            motorcycleType: estimate.vehicleType || formData.motorcycleType,
+            bikeMake: formData.bikeMake,
+            bikeModel: formData.bikeModel,
+            urgency: estimate.urgency || formData.urgency,
+            estimatedPrice: estimate.manualReview ? 'Manual Review Required' : String(estimate.finalPrice || ''),
+            manualReview: Boolean(estimate.manualReview),
+            quoteToken: estimate.quoteToken || null,
+            source: 'website',
+            leadSource: BTSA_LEAD_ATTRIBUTION.leadSource,
+            leadMedium: BTSA_LEAD_ATTRIBUTION.leadMedium,
+            campaign: BTSA_LEAD_ATTRIBUTION.campaign,
+            adContent: BTSA_LEAD_ATTRIBUTION.adContent,
+            keyword: BTSA_LEAD_ATTRIBUTION.keyword,
+            gclid: BTSA_LEAD_ATTRIBUTION.gclid,
+            wbraid: BTSA_LEAD_ATTRIBUTION.wbraid,
+            gbraid: BTSA_LEAD_ATTRIBUTION.gbraid,
+            fbclid: BTSA_LEAD_ATTRIBUTION.fbclid,
+            landingPage: BTSA_LEAD_ATTRIBUTION.landingPage,
+            referrer: BTSA_LEAD_ATTRIBUTION.referrer
+          })
+        });
+
+        if (!railwayResp.ok) {
+          const railwayText = await railwayResp.text();
+          throw new Error(railwayText || `Railway lead ingest failed with HTTP ${railwayResp.status}`);
+        }
+      } catch (railwayError) {
+        // The customer's enquiry has already been safely submitted through the
+        // existing BTSA WordPress endpoint, so a Railway mirror failure must not
+        // block the thank-you screen or Google Ads conversion.
+        console.error('Railway lead mirror error:', railwayError);
+      }
+
+      setCurrentStep('thankyou');
+
+      // Fire Google Ads conversion
+      if (typeof gtag !== 'undefined') {
+        gtag('event', 'conversion', {
+          'send_to': 'AW-17634803083/lMCACMbLw_wcEIv79thB',
+          'transaction_id': estimate.quoteToken
+        });
+      } else {
+        console.error('Google Ads conversion was not sent because gtag is unavailable.');
+      }
+      // Fire Meta Lead only after the enquiry was successfully saved
+      if (typeof fbq === 'function') {
+        fbq('track', 'Lead');
+      } else {
+        console.error('Meta Lead was not sent because fbq is unavailable.');
+      }
+    } catch (error) {
+      console.error('Error submitting lead:', error);
+      alert(error.message || 'There was a problem submitting your enquiry. Please WhatsApp us directly if this continues.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const getWhatsAppLink = () => {
+    const priceLine = estimate?.manualReview
+      ? 'Estimated Price: Manual route review required'
+      : `Estimated Price: R${Number(estimate.finalPrice || 0).toLocaleString()}`;
+
+    const msg = `Hi! I got a quote from your website:\n\nFrom: ${formData.pickupLocation}\nTo: ${formData.dropoffLocation}\nDistance: ${estimate.distance}km\nBike: ${estimate.vehicleType}\nUrgency: ${estimate.urgency}\n${priceLine}\n\nI'd like to confirm this quote and check available route space.\n\nName: ${formData.name}\nEmail: ${formData.email}\nPhone: ${formData.phone}`;
+    return `https://wa.me/27724075794?text=${encodeURIComponent(msg)}`;
+  };
+
+  return (
+    <div style={{ maxWidth: '64rem', margin: '0 auto', padding: '1.5rem', backgroundColor: 'white' }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); }}`}</style>
+
+      <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+        <h1 style={{ fontSize: '1.875rem', fontWeight: 'bold', color: '#111827', marginBottom: '0.5rem' }}>Motorcycle Transport Estimate</h1>
+        <p style={{ color: '#6B7280' }}>Get an instant quote for your motorcycle transport needs</p>
+      </div>
+
+      {currentStep === 'calculator' && (
+        <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+          <div style={{ backgroundColor: '#F9FAFB', padding: '2rem', borderRadius: '0.75rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: '600', marginBottom: '1.5rem' }}>🧮 Transport Details</h2>
+
+            <LocationInput
+              label="Pickup Location"
+              value={formData.pickupLocation}
+              onChange={(v) => setFormData(p => ({ ...p, pickupLocation: v }))}
+              placeholder="Enter pickup location"
+              onLocationSelect={(c) => setLocationCoords(p => ({ ...p, pickup: c }))}
+            />
+
+            <LocationInput
+              label="Drop-off Location"
+              value={formData.dropoffLocation}
+              onChange={(v) => setFormData(p => ({ ...p, dropoffLocation: v }))}
+              placeholder="Enter drop-off location"
+              onLocationSelect={(c) => setLocationCoords(p => ({ ...p, dropoff: c }))}
+            />
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.25rem' }}>Total Distance</label>
+              <input
+                type="text"
+                value={
+                  formData.distance === 'Calculating...'
+                    ? 'Calculating distance...'
+                    : formData.distance
+                      ? `${formData.distance} km`
+                      : 'Select both locations to calculate distance'
+                }
+                readOnly
+                style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid #D1D5DB', borderRadius: '0.375rem', backgroundColor: '#F9FAFB', color: '#374151', cursor: 'not-allowed' }}
+              />
+              {formData.distance && formData.distance !== 'Calculating...' && (
+                <p style={{ fontSize: '0.75rem', color: '#10B981', marginTop: '0.25rem' }}>✓ Distance calculated</p>
+              )}
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.25rem' }}>Motorcycle Type *</label>
+              <select
+                value={formData.motorcycleType}
+                onChange={(e) => setFormData(p => ({ ...p, motorcycleType: e.target.value }))}
+                style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid #D1D5DB', borderRadius: '0.375rem', fontSize: '1rem' }}
+              >
+                <option value="">Select motorcycle type</option>
+                {motorcycleTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.25rem' }}>Bike Make *</label>
+              <input
+                type="text"
+                value={formData.bikeMake}
+                onChange={(e) => setFormData(p => ({ ...p, bikeMake: e.target.value }))}
+                placeholder="e.g., Yamaha, Honda, Harley"
+                style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid #D1D5DB', borderRadius: '0.375rem', fontSize: '1rem' }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.25rem' }}>Bike Model *</label>
+              <input
+                type="text"
+                value={formData.bikeModel}
+                onChange={(e) => setFormData(p => ({ ...p, bikeModel: e.target.value }))}
+                placeholder="e.g., R1, CBR, Street 750"
+                style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid #D1D5DB', borderRadius: '0.375rem', fontSize: '1rem' }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.25rem' }}>Urgency *</label>
+              <select
+                value={formData.urgency}
+                onChange={(e) => setFormData(p => ({ ...p, urgency: e.target.value }))}
+                style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid #D1D5DB', borderRadius: '0.375rem', fontSize: '1rem' }}
+              >
+                <option value="">Select timeframe</option>
+                {urgencyOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+
+            <button
+              onClick={calculateEstimate}
+              style={{ width: '100%', backgroundColor: '#2563EB', color: 'white', padding: '0.75rem 1rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', fontWeight: '600', fontSize: '1rem' }}
+            >
+              Continue to Get Quote
+            </button>
+          </div>
+        </div>
+      )}
+
+      {currentStep === 'contact' && estimate && (
+        <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+          <div style={{ backgroundColor: '#EFF6FF', padding: '2rem', borderRadius: '0.75rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', border: '2px solid #BFDBFE' }}>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1E40AF', marginBottom: '1.5rem' }}>Get Your Custom Quote</h2>
+
+            <div style={{ backgroundColor: 'white', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}><span style={{ color: '#6B7280' }}>Distance:</span><span style={{ fontWeight: '500' }}>{estimate.distance} km</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}><span style={{ color: '#6B7280' }}>Vehicle Type:</span><span style={{ fontWeight: '500' }}>{estimate.vehicleType}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}><span style={{ color: '#6B7280' }}>Timeframe:</span><span style={{ fontWeight: '500' }}>{estimate.urgency}</span></div>
+            </div>
+
+            <div style={{ backgroundColor: '#FFF7ED', padding: '1.5rem', borderRadius: '0.5rem', marginBottom: '1.5rem', textAlign: 'center', border: '2px solid #FDBA74' }}>
+              <p style={{ fontSize: '1rem', color: '#9A3412', fontWeight: '600', marginBottom: '0.5rem' }}>📧 Get Your Instant Quote</p>
+              <p style={{ fontSize: '0.875rem', color: '#C2410C' }}>Enter your details below to see your personalized pricing</p>
+            </div>
+
+            <h3 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#065F46', marginBottom: '1rem' }}>Your Contact Information</h3>
+
+            <input type="text" value={formData.name} onChange={(e) => setFormData(p => ({ ...p, name: e.target.value }))} placeholder="Full Name" style={{ width: '100%', padding: '0.75rem', border: '1px solid #D1D5DB', borderRadius: '0.375rem', fontSize: '1rem', marginBottom: '0.75rem' }} />
+            <input type="email" value={formData.email} onChange={(e) => setFormData(p => ({ ...p, email: e.target.value }))} placeholder="Email Address" style={{ width: '100%', padding: '0.75rem', border: '1px solid #D1D5DB', borderRadius: '0.375rem', fontSize: '1rem', marginBottom: '0.75rem' }} />
+            <input type="tel" value={formData.phone} onChange={(e) => setFormData(p => ({ ...p, phone: e.target.value }))} placeholder="Phone Number" style={{ width: '100%', padding: '0.75rem', border: '1px solid #D1D5DB', borderRadius: '0.375rem', fontSize: '1rem', marginBottom: '1rem' }} />
+
+            <button onClick={handleSubmitContact} disabled={isSubmitting} style={{ width: '100%', backgroundColor: isSubmitting ? '#9CA3AF' : '#059669', color: 'white', padding: '0.875rem 1rem', borderRadius: '0.375rem', border: 'none', cursor: isSubmitting ? 'not-allowed' : 'pointer', fontWeight: '600', fontSize: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {isSubmitting ? (
+                <>
+                  <div style={{ width: '1rem', height: '1rem', border: '2px solid white', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite', marginRight: '0.5rem' }}></div>
+                  Getting Your Quote...
+                </>
+              ) : '✨ Get My Instant Quote'}
+            </button>
+
+            <p style={{ fontSize: '0.75rem', color: '#6B7280', textAlign: 'center', marginTop: '0.75rem' }}>Your information is secure and will only be used for your quote</p>
+          </div>
+        </div>
+      )}
+
+      {currentStep === 'thankyou' && estimate && (
+        <div style={{ maxWidth: '600px', margin: '0 auto' }}>
+          <div style={{ backgroundColor: '#ECFDF5', padding: '2rem', borderRadius: '0.75rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', border: '2px solid #A7F3D0', textAlign: 'center' }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>✅</div>
+
+            <h2 style={{ fontSize: '1.75rem', fontWeight: 'bold', color: '#065F46', marginBottom: '1rem' }}>{estimate.manualReview ? `Thanks, ${formData.name}` : `Here's Your Quote, ${formData.name}!`}</h2>
+
+            <div style={{ backgroundColor: 'white', padding: '2rem', borderRadius: '0.5rem', marginBottom: '1.5rem', border: '2px solid #BFDBFE' }}>
+              {estimate.manualReview ? (
+                <>
+                  <p style={{ fontSize: '0.875rem', color: '#6B7280', marginBottom: '0.5rem' }}>Route Availability Check Required</p>
+                  <p style={{ fontSize: '1.75rem', fontWeight: 'bold', color: '#C2410C', marginBottom: '0.5rem' }}>Manual Pricing Required</p>
+                  <p style={{ fontSize: '0.75rem', color: '#6B7280' }}>This route requires manual scheduling due to limited carrier availability.</p>
+                </>
+              ) : (
+                <>
+                  <p style={{ fontSize: '0.875rem', color: '#6B7280', marginBottom: '0.5rem' }}>Your Total Estimate:</p>
+                  <p style={{ fontSize: '3rem', fontWeight: 'bold', color: '#1D4ED8', marginBottom: '0.5rem' }}>R{Number(estimate.finalPrice || 0).toLocaleString()}</p>
+                  <p style={{ fontSize: '0.75rem', color: '#6B7280' }}>Valid for 7 days • All fees included</p>
+                </>
+              )}
+            </div>
+
+            <p style={{ fontSize: '1rem', color: '#047857', marginBottom: '1.5rem' }}>
+              We'll contact you at <strong>{formData.email}</strong> or <strong>{formData.phone}</strong> within 24 hours to confirm your booking.
+            </p>
+
+            <a href={getWhatsAppLink()} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', backgroundColor: '#25D366', color: 'white', padding: '1rem 2rem', borderRadius: '0.5rem', textDecoration: 'none', fontWeight: '600', fontSize: '1rem', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', marginBottom: '0.75rem' }}>⚡ Secure This Quote on WhatsApp</a>
+
+            <p style={{ fontSize: '0.75rem', color: '#6B7280', marginBottom: '1.5rem' }}>Limited route space available — confirm before this quote expires.</p>
+
+            <button
+              onClick={() => {
+                setCurrentStep('calculator');
+                setFormData({ pickupLocation: '', dropoffLocation: '', distance: '', motorcycleType: '', bikeMake: '', bikeModel: '', urgency: '', name: '', email: '', phone: '' });
+                setEstimate(null);
+                setLocationCoords({ pickup: null, dropoff: null });
+              }}
+              style={{ backgroundColor: '#E5E7EB', color: '#374151', padding: '0.75rem 1.5rem', borderRadius: '0.375rem', border: 'none', cursor: 'pointer', fontWeight: '500', fontSize: '0.95rem' }}
+            >
+              Get Another Quote
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const root = ReactDOM.createRoot(document.getElementById('motorcycle-calculator-root'));
+root.render(<MotorcycleCalculator />);
+</script>
