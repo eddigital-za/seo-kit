@@ -1,4 +1,5 @@
 import os
+import json
 from typing import Any
 from urllib.parse import urlparse
 
@@ -212,3 +213,46 @@ def inspect_elementor_assets(object_id: int) -> dict[str, Any]:
         if pos >= 0:
             snippets[needle] = data[max(0, pos - 800): min(len(data), pos + 2200)]
     return {"page_id": object_id, "slug": page.get("slug"), "bytes": len(data), "snippets": snippets}
+
+
+def get_estimator_html(object_id: int) -> str:
+    page = _get(f"pages/{object_id}", {"context": "edit", "_fields": "id,meta"})
+    data = ((page.get("meta") or {}).get("_elementor_data") or "")
+    tree = json.loads(data)
+    stack = list(tree if isinstance(tree, list) else [tree])
+    while stack:
+        item = stack.pop()
+        if not isinstance(item, dict):
+            continue
+        settings = item.get("settings") or {}
+        html = settings.get("html")
+        if isinstance(html, str) and 'type="text/babel"' in html:
+            return html
+        stack.extend(item.get("elements") or [])
+    raise RuntimeError(f"Estimator HTML widget not found on page {object_id}")
+
+
+def replace_estimator_html(object_id: int, new_html: str, dry_run: bool = True) -> dict[str, Any]:
+    page = _get(f"pages/{object_id}", {"context": "edit", "_fields": "id,slug,status,modified_gmt,meta"})
+    meta = page.get("meta") or {}
+    data = meta.get("_elementor_data") or ""
+    tree = json.loads(data)
+    changed = False
+    stack = list(tree if isinstance(tree, list) else [tree])
+    while stack:
+        item = stack.pop()
+        if not isinstance(item, dict):
+            continue
+        settings = item.get("settings") or {}
+        html = settings.get("html")
+        if isinstance(html, str) and 'type="text/babel"' in html:
+            settings["html"] = new_html
+            changed = True
+            break
+        stack.extend(item.get("elements") or [])
+    if not changed:
+        return {"page_id": object_id, "changed": False, "write_actions_taken": 0}
+    if dry_run:
+        return {"page_id": object_id, "changed": True, "write_actions_taken": 0}
+    compact = json.dumps(tree, separators=(",", ":"), ensure_ascii=False)
+    return update_content("pages", object_id, {"meta": {"_elementor_data": compact}}, dry_run=False)
