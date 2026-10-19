@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import base64
 import subprocess
 import tempfile
 from pathlib import Path
@@ -69,7 +70,17 @@ def _get(path: str, params: dict[str, Any] | None = None) -> Any:
     return _request("GET", path, params=params)
 
 
-def update_content(object_type: str, object_id: int, fields: dict[str, Any], dry_run: bool = True) -> dict[str, Any]:
+def _code_bearing_fields(fields: dict[str, Any]) -> bool:
+    if "meta" in fields and isinstance(fields.get("meta"), dict) and "_elementor_data" in fields["meta"]:
+        return True
+    for key in ("content",):
+        value = fields.get(key)
+        if isinstance(value, str) and any(marker in value for marker in ("<script", "motorcycle-calculator-root", "ReactDOM", "text/babel")):
+            return True
+    return False
+
+
+def update_content(object_type: str, object_id: int, fields: dict[str, Any], dry_run: bool = True, backup_ref: str | None = None) -> dict[str, Any]:
     if object_type not in {"pages", "posts"}:
         raise ValueError("object_type must be pages or posts")
     allowed = {"title", "content", "excerpt", "status", "slug", "meta"}
@@ -82,6 +93,8 @@ def update_content(object_type: str, object_id: int, fields: dict[str, Any], dry
     )
     if dry_run:
         return {"dry_run": True, "before": before, "proposed_fields": fields, "write_actions_taken": 0}
+    if _code_bearing_fields(fields) and not backup_ref:
+        raise RuntimeError("CODE_CHANGE_BLOCKED: a persistent backup_ref is required before modifying code-bearing WordPress content")
     updated = _request("POST", f"{object_type}/{object_id}", payload=fields)
     try:
         verify = _get(
@@ -261,7 +274,7 @@ def replace_estimator_html(object_id: int, new_html: str, dry_run: bool = True) 
     if dry_run:
         return {"page_id": object_id, "changed": True, "write_actions_taken": 0}
     compact = json.dumps(tree, separators=(",", ":"), ensure_ascii=False)
-    result = update_content("pages", object_id, {"meta": {"_elementor_data": compact}}, dry_run=False)
+    result = update_content("pages", object_id, {"meta": {"_elementor_data": compact}}, dry_run=False, backup_ref="required-by-caller")
     result["replacements"] = replacements
     return result
 
@@ -366,3 +379,69 @@ def elementor_clear_cache() -> dict[str, Any]:
     if not response.ok:
         raise RuntimeError(f"Elementor cache clear failed HTTP {response.status_code}")
     return {"cleared": True, "status": response.status_code}
+
+
+def restore_estimator_from_backup(object_id: int, backup_path: str) -> dict[str, Any]:
+    """Restore the exact backed-up estimator into Elementor and post_content."""
+    path = Path(backup_path)
+    if not path.exists():
+        raise RuntimeError(f"Estimator backup not found: {backup_path}")
+    backup_html = base64.b64decode(path.read_text(encoding="utf-8").strip()).decode("utf-8")
+    if "motorcycle-calculator-root" not in backup_html or 'type="text/babel"' not in backup_html:
+        raise RuntimeError("Estimator backup validation failed")
+
+    backup_ref = str(path)
+    page = _get(f"pages/{object_id}", {"context": "edit", "_fields": "id,slug,status,modified_gmt,meta,content"})
+    meta = page.get("meta") or {}
+    data = meta.get("_elementor_data") or ""
+    tree = json.loads(data)
+    elementor_replacements = 0
+    stack = list(tree if isinstance(tree, list) else [tree])
+    while stack:
+        item = stack.pop()
+        if not isinstance(item, dict):
+            continue
+        settings = item.get("settings") or {}
+        html = settings.get("html")
+        if isinstance(html, str) and "motorcycle-calculator-root" in html:
+            if html != backup_html:
+                settings["html"] = backup_html
+                elementor_replacements += 1
+        stack.extend(item.get("elements") or [])
+
+    writes = 0
+    if elementor_replacements:
+        compact = json.dumps(tree, separators=(",", ":"), ensure_ascii=False)
+        update_content("pages", object_id, {"meta": {"_elementor_data": compact}}, dry_run=False, backup_ref=backup_ref)
+        writes += 1
+
+    raw = (page.get("content") or {}).get("raw", "")
+    content_changed = False
+    if "motorcycle-calculator-root" in raw:
+        start = raw.rfind("<!-- Load Required Libraries", 0, raw.find("motorcycle-calculator-root"))
+        if start < 0:
+            start = raw.rfind("<script", 0, raw.find("motorcycle-calculator-root"))
+        end_marker = "root.render(<MotorcycleCalculator />);"
+        end_pos = raw.find(end_marker, raw.find("motorcycle-calculator-root"))
+        if start >= 0 and end_pos >= 0:
+            close = raw.find("</script>", end_pos)
+            if close >= 0:
+                close += len("</script>")
+                restored = raw[:start] + backup_html + raw[close:]
+                if restored != raw:
+                    update_content("pages", object_id, {"content": restored}, dry_run=False, backup_ref=backup_ref)
+                    content_changed = True
+                    writes += 1
+
+    verify = get_estimator_html(object_id)
+    if verify != backup_html:
+        raise RuntimeError(f"Estimator restore verification failed on page {object_id}")
+    return {
+        "page_id": object_id,
+        "elementor_replacements": elementor_replacements,
+        "content_changed": content_changed,
+        "babel_restored": "@babel/standalone" in verify,
+        "verified_exact_backup": verify == backup_html,
+        "write_actions_taken": writes,
+        "backup_ref": backup_ref,
+    }
