@@ -10,7 +10,7 @@ from app.security import require_agent_key
 from app.gsc import fetch_queries, GSCConfigurationError
 from app.scoring import score_gsc_rows
 from app.seo_kit import run_crawl, run_speed, run_speed_batch
-from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, inspect_elementor_assets, get_estimator_html, optimize_estimator_widget, optimize_post_content_estimator, WordPressConfigurationError
+from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, inspect_elementor_assets, get_estimator_html, optimize_estimator_widget, optimize_post_content_estimator, elementor_clear_cache, WordPressConfigurationError
 
 def _bootstrap_audit():
     try:
@@ -64,6 +64,9 @@ def _bootstrap_audit():
                     f"content_babel_removed={content_result.get('babel_removed')}",
                     flush=True,
                 )
+        if os.getenv("SEO_CLEAR_ELEMENTOR_CACHE", "0") == "1":
+            cache_result = elementor_clear_cache()
+            print(f"ELEMENTOR_CACHE_CLEAR cleared={cache_result['cleared']} status={cache_result['status']}", flush=True)
         if os.getenv("SEO_RENDER_VERIFY", "0") == "1":
             for url in BTSA_PERFORMANCE_URLS:
                 for suffix in ("", "?btsa_seo_verify=1"):
