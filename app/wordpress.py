@@ -266,7 +266,10 @@ def replace_estimator_html(object_id: int, new_html: str, dry_run: bool = True) 
 
 
 def optimize_estimator_widget(object_id: int, dry_run: bool = True) -> dict[str, Any]:
-    html = get_estimator_html(object_id)
+    try:
+        html = get_estimator_html(object_id)
+    except RuntimeError:
+        return {"page_id": object_id, "changed": False, "reason": "no text/babel estimator", "write_actions_taken": 0}
     match = re.search(r'<script\s+type=["\']text/babel["\']>(.*?)</script>', html, flags=re.I | re.S)
     if not match:
         return {"page_id": object_id, "changed": False, "reason": "no text/babel script", "write_actions_taken": 0}
