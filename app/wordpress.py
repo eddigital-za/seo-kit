@@ -220,6 +220,7 @@ def inspect_elementor_assets(object_id: int) -> dict[str, Any]:
 
 
 def get_estimator_html(object_id: int) -> str:
+    """Return the estimator widget whether it is the original JSX or a compiled variant."""
     page = _get(f"pages/{object_id}", {"context": "edit", "_fields": "id,meta"})
     data = ((page.get("meta") or {}).get("_elementor_data") or "")
     tree = json.loads(data)
@@ -230,7 +231,7 @@ def get_estimator_html(object_id: int) -> str:
             continue
         settings = item.get("settings") or {}
         html = settings.get("html")
-        if isinstance(html, str) and 'type="text/babel"' in html:
+        if isinstance(html, str) and 'motorcycle-calculator-root' in html:
             return html
         stack.extend(item.get("elements") or [])
     raise RuntimeError(f"Estimator HTML widget not found on page {object_id}")
