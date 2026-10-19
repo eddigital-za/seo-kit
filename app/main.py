@@ -10,7 +10,7 @@ from app.security import require_agent_key
 from app.gsc import fetch_queries, GSCConfigurationError
 from app.scoring import score_gsc_rows
 from app.seo_kit import run_crawl, run_speed, run_speed_batch
-from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, inspect_elementor_assets, get_estimator_html, optimize_estimator_widget, WordPressConfigurationError
+from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, inspect_elementor_assets, get_estimator_html, optimize_estimator_widget, optimize_post_content_estimator, WordPressConfigurationError
 
 def _bootstrap_audit():
     try:
@@ -54,11 +54,14 @@ def _bootstrap_audit():
             )
         if os.getenv("SEO_OPTIMIZE_ESTIMATOR", "0") == "1":
             for page_id in (275, 1211, 1078, 1036, 1217, 1234):
-                result = optimize_estimator_widget(page_id, dry_run=False)
+                elementor_result = optimize_estimator_widget(page_id, dry_run=False)
+                content_result = optimize_post_content_estimator(page_id, dry_run=False)
                 print(
-                    f"ESTIMATOR_OPTIMIZE page={page_id} changed={result.get('write_actions_taken', 0) > 0} "
-                    f"babel_removed={result.get('babel_removed')} source_bytes={result.get('source_bytes')} "
-                    f"compiled_bytes={result.get('compiled_bytes')}",
+                    f"ESTIMATOR_OPTIMIZE page={page_id} "
+                    f"elementor_changed={elementor_result.get('write_actions_taken', 0) > 0} "
+                    f"content_changed={content_result.get('write_actions_taken', 0) > 0} "
+                    f"elementor_babel_removed={elementor_result.get('babel_removed')} "
+                    f"content_babel_removed={content_result.get('babel_removed')}",
                     flush=True,
                 )
         if os.getenv("SEO_RENDER_VERIFY", "0") == "1":
