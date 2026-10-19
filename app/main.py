@@ -1,5 +1,6 @@
 import os
 import threading
+import base64
 from fastapi import Depends, FastAPI, HTTPException
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
@@ -8,7 +9,7 @@ from app.security import require_agent_key
 from app.gsc import fetch_queries, GSCConfigurationError
 from app.scoring import score_gsc_rows
 from app.seo_kit import run_crawl, run_speed, run_speed_batch
-from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, inspect_elementor_assets, WordPressConfigurationError
+from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, inspect_elementor_assets, get_estimator_html, WordPressConfigurationError
 
 def _bootstrap_audit():
     try:
@@ -54,6 +55,14 @@ def _bootstrap_audit():
             for page_id in (275, 1211, 1078, 1036, 1217, 1234):
                 asset_info = inspect_elementor_assets(page_id)
                 print(f"ESTIMATOR_ASSETS {asset_info}", flush=True)
+        if os.getenv("SEO_EXPORT_ESTIMATOR", "0") == "1":
+            html = get_estimator_html(275)
+            encoded = base64.b64encode(html.encode("utf-8")).decode("ascii")
+            chunk_size = 6000
+            chunks = [encoded[i:i + chunk_size] for i in range(0, len(encoded), chunk_size)]
+            print(f"ESTIMATOR_EXPORT_META chunks={len(chunks)} bytes={len(html)}", flush=True)
+            for index, chunk in enumerate(chunks):
+                print(f"ESTIMATOR_EXPORT_{index:02d} {chunk}", flush=True)
         for result in run_speed_batch(BTSA_PERFORMANCE_URLS):
             url = result["url"]
             for strategy in ("mobile", "desktop"):
