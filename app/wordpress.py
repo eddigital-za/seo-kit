@@ -32,7 +32,19 @@ def _get(path: str, params: dict[str, Any] | None = None) -> Any:
         raise PermissionError(
             f"WordPress authentication/permission failed ({response.status_code})"
         )
-    response.raise_for_status()
+    content_type = response.headers.get("content-type", "")
+    if not response.ok:
+        preview = response.text[:240].replace("\n", " ").replace("\r", " ")
+        raise RuntimeError(
+            f"WordPress HTTP {response.status_code}; content_type={content_type}; "
+            f"url={response.url}; preview={preview!r}"
+        )
+    if "json" not in content_type.lower():
+        preview = response.text[:240].replace("\n", " ").replace("\r", " ")
+        raise RuntimeError(
+            f"WordPress returned non-JSON response; status={response.status_code}; "
+            f"content_type={content_type}; url={response.url}; preview={preview!r}"
+        )
     return response.json()
 
 
