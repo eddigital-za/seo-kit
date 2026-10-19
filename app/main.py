@@ -8,7 +8,7 @@ from app.security import require_agent_key
 from app.gsc import fetch_queries, GSCConfigurationError
 from app.scoring import score_gsc_rows
 from app.seo_kit import run_crawl, run_speed, run_speed_batch
-from app.wordpress import connection_check, update_content, WordPressConfigurationError
+from app.wordpress import connection_check, update_content, replace_content_text, WordPressConfigurationError
 
 def _bootstrap_audit():
     try:
@@ -29,6 +29,21 @@ def _bootstrap_audit():
                     )
                 else:
                     print(f"PAGESPEED_FAILED strategy={strategy} url={url} error={item.get('error')}", flush=True)
+        if os.getenv("SEO_BOOTSTRAP_FIX", "0") == "1":
+            repairs = {
+                1078: {
+                    "Deliveries across Gauteng include:": "Deliveries across KwaZulu-Natal include:",
+                    "JHB ⇄ Cape Town Transport": "Durban ⇄ Cape Town Transport",
+                },
+                1217: {"ober 160": "over 160"},
+            }
+            for page_id, replacements in repairs.items():
+                result = replace_content_text(page_id, replacements, dry_run=False)
+                print(
+                    f"WP_REPAIR page={page_id} changed={result.get('write_actions_taken', 0) > 0} "
+                    f"matches={result.get('matches', [])} rollback_ready={result.get('rollback_ready', False)}",
+                    flush=True,
+                )
         for object_id in (1078, 1217, 1211, 1036):
             snap = update_content("pages", object_id, {}, dry_run=True)
             before = snap["before"]
