@@ -1,8 +1,10 @@
 FROM python:3.12-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends bash curl jq bc git ca-certificates \
+    && apt-get install -y --no-install-recommends bash curl jq bc git ca-certificates nodejs npm \
     && rm -rf /var/lib/apt/lists/*
+
+RUN npm install -g typescript@5.9.3
 
 WORKDIR /app
 COPY requirements.txt .
