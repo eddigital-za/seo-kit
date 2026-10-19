@@ -317,3 +317,35 @@ def optimize_estimator_widget(object_id: int, dry_run: bool = True) -> dict[str,
         "babel_removed": "@babel/standalone" not in optimized,
     })
     return result
+
+
+def optimize_post_content_estimator(object_id: int, dry_run: bool = True) -> dict[str, Any]:
+    page = _get(f"pages/{object_id}", {"context": "edit", "_fields": "id,slug,content"})
+    html = (page.get("content") or {}).get("raw", "")
+    match = re.search(r'<script\s+type=["\']text/babel["\']>(.*?)</script>', html, flags=re.I | re.S)
+    if not match:
+        return {"page_id": object_id, "changed": False, "reason": "no text/babel in post_content", "write_actions_taken": 0}
+    source = match.group(1)
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "estimator.jsx"
+        out = Path(tmp) / "estimator.js"
+        src.write_text(source, encoding="utf-8")
+        process = subprocess.run(
+            ["tsc", str(src), "--jsx", "react", "--target", "ES2018", "--module", "none",
+             "--allowJs", "--skipLibCheck", "--outFile", str(out)],
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        if not out.exists():
+            raise RuntimeError(f"Post-content estimator transpilation failed: {process.stderr[-1000:]}")
+        compiled = out.read_text(encoding="utf-8")
+    optimized = re.sub(r'\s*<script[^>]+@babel/standalone[^>]*></script>\s*', "\n", html, flags=re.I)
+    optimized = re.sub(
+        r'<script\s+type=["\']text/babel["\']>.*?</script>',
+        lambda _match: "<script>\n" + compiled + "\n</script>",
+        optimized, count=1, flags=re.I | re.S,
+    )
+    if dry_run:
+        return {"page_id": object_id, "changed": True, "babel_removed": "@babel/standalone" not in optimized, "write_actions_taken": 0}
+    result = update_content("pages", object_id, {"content": optimized}, dry_run=False)
+    result["babel_removed"] = "@babel/standalone" not in optimized
+    return result
