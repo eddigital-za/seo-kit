@@ -19,7 +19,7 @@
     ]
   },
   "guardrails": {
-    "wordpress_write_enabled": false,
+    "wordpress_write_enabled": true,
     "auto_publish_enabled": false,
     "allow_fabricated_claims": false,
     "allow_keyword_stuffing": false,
