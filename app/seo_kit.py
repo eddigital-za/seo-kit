@@ -91,6 +91,25 @@ def run_pagespeed(url: str, strategy: str):
             })
     opportunities.sort(key=lambda item: item["savings_ms"], reverse=True)
 
+    def audit_items(audit_id, limit=8):
+        items = ((audits.get(audit_id, {}).get("details") or {}).get("items") or [])
+        cleaned = []
+        for item in items[:limit]:
+            cleaned.append({
+                key: item.get(key)
+                for key in ("url", "totalBytes", "wastedBytes", "wastedMs", "node", "score", "value")
+                if item.get(key) is not None
+            })
+        return cleaned
+
+    diagnostics = {
+        "unused_javascript": audit_items("unused-javascript", 12),
+        "unused_css": audit_items("unused-css-rules", 12),
+        "lcp_element": audit_items("largest-contentful-paint-element", 3),
+        "layout_shifts": audit_items("layout-shifts", 8),
+        "render_blocking": audit_items("render-blocking-resources", 12),
+    }
+
     return {
         "ok": True,
         "url": url,
@@ -122,6 +141,7 @@ def run_pagespeed(url: str, strategy: str):
             "overall_category": data.get("loadingExperience", {}).get("overall_category"),
         },
         "opportunities": opportunities[:10],
+        "diagnostics": diagnostics,
         "analysis_timestamp": lighthouse.get("fetchTime"),
     }
 
