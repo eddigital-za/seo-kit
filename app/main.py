@@ -1,4 +1,5 @@
 import os
+import threading
 from fastapi import Depends, FastAPI, HTTPException
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
@@ -9,6 +10,41 @@ from app.scoring import score_gsc_rows
 from app.seo_kit import run_crawl, run_speed, run_speed_batch
 from app.wordpress import connection_check, update_content, WordPressConfigurationError
 
+def _bootstrap_audit():
+    try:
+        wp = connection_check()
+        print(f"SEO_BOOTSTRAP wp_authenticated={wp['authenticated']} pages_read={len(wp['recent_pages'])}", flush=True)
+        for url in BTSA_PERFORMANCE_URLS:
+            result = run_speed(url)
+            for strategy in ("mobile", "desktop"):
+                item = result[strategy]
+                if item.get("ok"):
+                    print(
+                        f"PAGESPEED strategy={strategy} url={url} perf={item['scores']['performance']} "
+                        f"seo={item['scores']['seo']} lcp={item['lab']['lcp']['value_ms']} "
+                        f"cls={item['lab']['cls']['value']} ttfb={item['lab']['ttfb']['value_ms']} "
+                        f"field_lcp={item['field']['lcp_ms']} field_cls={item['field']['cls']} "
+                        f"field_ttfb={item['field']['ttfb_ms']} opps={item['opportunities'][:5]}",
+                        flush=True,
+                    )
+                else:
+                    print(f"PAGESPEED_FAILED strategy={strategy} url={url} error={item.get('error')}", flush=True)
+        for object_id in (1078, 1217, 1211, 1036):
+            snap = update_content("pages", object_id, {}, dry_run=True)
+            before = snap["before"]
+            raw = (before.get("content") or {}).get("raw", "")
+            meta = before.get("meta") or {}
+            print(
+                f"WP_AUDIT page={object_id} slug={before.get('slug')} "
+                f"gauteng_kzn_error={'Deliveries across Gauteng' in raw} "
+                f"wrong_jhb_ct_cta={'JHB' in raw and 'Cape Town Transport' in raw} "
+                f"ober_typo={'ober 160' in raw} meta_keys={sorted(meta.keys())}",
+                flush=True,
+            )
+    except Exception as exc:
+        print(f"SEO_BOOTSTRAP_FAILED type={type(exc).__name__} detail={repr(exc)}", flush=True)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if os.getenv("WP_VERIFY_ON_STARTUP", "0") == "1":
@@ -17,6 +53,8 @@ async def lifespan(app: FastAPI):
             print(f"WP_VERIFY authenticated={result['authenticated']} user_id={result['user']['id']} pages_read={len(result['recent_pages'])} write_actions={result['write_actions_taken']}", flush=True)
         except Exception as exc:
             print(f"WP_VERIFY failed type={type(exc).__name__} detail={repr(exc)}", flush=True)
+    if os.getenv("SEO_BOOTSTRAP_AUDIT", "0") == "1":
+        threading.Thread(target=_bootstrap_audit, daemon=True).start()
     yield
 
 app = FastAPI(title="BTSA SEO Agent", version="0.4.0", lifespan=lifespan)
