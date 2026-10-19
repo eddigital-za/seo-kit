@@ -1,6 +1,7 @@
 import os
 import threading
 import base64
+import requests
 from fastapi import Depends, FastAPI, HTTPException
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
@@ -60,6 +61,16 @@ def _bootstrap_audit():
                     f"compiled_bytes={result.get('compiled_bytes')}",
                     flush=True,
                 )
+        if os.getenv("SEO_RENDER_VERIFY", "0") == "1":
+            for url in BTSA_PERFORMANCE_URLS:
+                for suffix in ("", "?btsa_seo_verify=1"):
+                    response = requests.get(url + suffix, timeout=30, headers={"User-Agent": "BTSA-SEO-Agent-Verify/1.0"})
+                    print(
+                        f"RENDER_VERIFY url={url + suffix} status={response.status_code} "
+                        f"babel={'@babel/standalone' in response.text} tailwind={'cdn.tailwindcss.com' in response.text} "
+                        f"bytes={len(response.content)}",
+                        flush=True,
+                    )
         if os.getenv("SEO_ESTIMATOR_INSPECT", "0") == "1":
             for page_id in (275, 1211, 1078, 1036, 1217, 1234):
                 asset_info = inspect_elementor_assets(page_id)
