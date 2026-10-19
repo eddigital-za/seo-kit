@@ -10,7 +10,7 @@ from app.security import require_agent_key
 from app.gsc import fetch_queries, GSCConfigurationError
 from app.scoring import score_gsc_rows
 from app.seo_kit import run_crawl, run_speed, run_speed_batch
-from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, inspect_elementor_assets, get_estimator_html, optimize_estimator_widget, optimize_post_content_estimator, elementor_clear_cache, restore_estimator_from_backup, WordPressConfigurationError
+from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, inspect_elementor_assets, get_estimator_html, optimize_estimator_widget, optimize_post_content_estimator, elementor_clear_cache, restore_estimator_from_backup, capture_estimator_backup, wp_rocket_purge_all, WordPressConfigurationError
 
 def _bootstrap_audit():
     try:
@@ -81,6 +81,16 @@ def _bootstrap_audit():
                 print(f"ELEMENTOR_CACHE_CLEAR cleared={cache_result['cleared']} status={cache_result['status']}", flush=True)
             except Exception as exc:
                 print(f"ELEMENTOR_CACHE_CLEAR_FAILED type={type(exc).__name__} detail={repr(exc)}", flush=True)
+        if os.getenv("SEO_BACKUP_ESTIMATOR", "0") == "1":
+            backup = capture_estimator_backup((275, 1211, 1078, 1036, 1217, 1234))
+            print(
+                f"ESTIMATOR_BACKUP path={backup['backup_path']} pages={backup['pages']} "
+                f"bytes={backup['bytes']} verified={backup['verified']}",
+                flush=True,
+            )
+        if os.getenv("SEO_PURGE_WPROCKET", "0") == "1":
+            purge = wp_rocket_purge_all()
+            print(f"WPROCKET_PURGE {purge}", flush=True)
         if os.getenv("SEO_RENDER_VERIFY", "0") == "1":
             for url in BTSA_PERFORMANCE_URLS:
                 for suffix in ("", "?btsa_seo_verify=1"):
