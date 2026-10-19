@@ -250,7 +250,7 @@ def get_estimator_html(object_id: int) -> str:
     raise RuntimeError(f"Estimator HTML widget not found on page {object_id}")
 
 
-def replace_estimator_html(object_id: int, new_html: str, dry_run: bool = True) -> dict[str, Any]:
+def replace_estimator_html(object_id: int, new_html: str, dry_run: bool = True, backup_ref: str | None = None) -> dict[str, Any]:
     page = _get(f"pages/{object_id}", {"context": "edit", "_fields": "id,slug,status,modified_gmt,meta"})
     meta = page.get("meta") or {}
     data = meta.get("_elementor_data") or ""
@@ -274,12 +274,12 @@ def replace_estimator_html(object_id: int, new_html: str, dry_run: bool = True) 
     if dry_run:
         return {"page_id": object_id, "changed": True, "write_actions_taken": 0}
     compact = json.dumps(tree, separators=(",", ":"), ensure_ascii=False)
-    result = update_content("pages", object_id, {"meta": {"_elementor_data": compact}}, dry_run=False, backup_ref="required-by-caller")
+    result = update_content("pages", object_id, {"meta": {"_elementor_data": compact}}, dry_run=False, backup_ref=backup_ref)
     result["replacements"] = replacements
     return result
 
 
-def optimize_estimator_widget(object_id: int, dry_run: bool = True) -> dict[str, Any]:
+def optimize_estimator_widget(object_id: int, dry_run: bool = True, backup_ref: str | None = None) -> dict[str, Any]:
     try:
         html = get_estimator_html(object_id)
     except RuntimeError:
@@ -324,7 +324,7 @@ def optimize_estimator_widget(object_id: int, dry_run: bool = True) -> dict[str,
             "compiled_bytes": len(compiled), "babel_removed": "@babel/standalone" not in optimized,
             "write_actions_taken": 0,
         }
-    result = replace_estimator_html(object_id, optimized, dry_run=False)
+    result = replace_estimator_html(object_id, optimized, dry_run=False, backup_ref=backup_ref)
     result.update({
         "source_bytes": len(source),
         "compiled_bytes": len(compiled),
@@ -333,7 +333,7 @@ def optimize_estimator_widget(object_id: int, dry_run: bool = True) -> dict[str,
     return result
 
 
-def optimize_post_content_estimator(object_id: int, dry_run: bool = True) -> dict[str, Any]:
+def optimize_post_content_estimator(object_id: int, dry_run: bool = True, backup_ref: str | None = None) -> dict[str, Any]:
     page = _get(f"pages/{object_id}", {"context": "edit", "_fields": "id,slug,content"})
     html = (page.get("content") or {}).get("raw", "")
     match = re.search(r'<script\s+type=["\']text/babel["\']>(.*?)</script>', html, flags=re.I | re.S)
@@ -360,7 +360,7 @@ def optimize_post_content_estimator(object_id: int, dry_run: bool = True) -> dic
     )
     if dry_run:
         return {"page_id": object_id, "changed": True, "babel_removed": "@babel/standalone" not in optimized, "write_actions_taken": 0}
-    result = update_content("pages", object_id, {"content": optimized}, dry_run=False)
+    result = update_content("pages", object_id, {"content": optimized}, dry_run=False, backup_ref=backup_ref)
     result["babel_removed"] = "@babel/standalone" not in optimized
     return result
 
