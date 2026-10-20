@@ -10,7 +10,7 @@ from app.security import require_agent_key
 from app.gsc import fetch_queries, GSCConfigurationError
 from app.scoring import score_gsc_rows
 from app.seo_kit import run_crawl, run_speed, run_speed_batch
-from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, inspect_elementor_assets, get_estimator_html, optimize_estimator_widget, optimize_post_content_estimator, elementor_clear_cache, restore_estimator_from_backup, capture_estimator_backup, wp_rocket_purge_all, apply_elementor_min_height_reservation, restore_elementor_from_backup, WordPressConfigurationError
+from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, inspect_elementor_assets, get_estimator_html, optimize_estimator_widget, optimize_post_content_estimator, elementor_clear_cache, restore_estimator_from_backup, capture_estimator_backup, wp_rocket_purge_all, apply_elementor_min_height_reservation, restore_elementor_from_backup, elementor_document_snapshot, WordPressConfigurationError
 
 def _bootstrap_audit():
     try:
@@ -91,6 +91,9 @@ def _bootstrap_audit():
         if os.getenv("SEO_PURGE_WPROCKET", "0") == "1":
             purge = wp_rocket_purge_all()
             print(f"WPROCKET_PURGE {purge}", flush=True)
+        if os.getenv("SEO_ELEMENTOR_PROBE", "0") == "1":
+            probe = elementor_document_snapshot(1211)
+            print(f"ELEMENTOR_DOCUMENT_PROBE {probe}", flush=True)
         if os.getenv("SEO_CLS_TEST", "0") == "1":
             page_id = 1211
             backup_path = "backups/page-1211-elementor-pre-cls-2026-10-20.b64"
