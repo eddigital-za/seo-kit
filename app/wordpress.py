@@ -394,9 +394,11 @@ def apply_elementor_min_height_reservation(
         raise RuntimeError(f"Elementor container {container_id} not found on page {object_id}")
     settings = found.setdefault("settings", {})
     previous = {
+        "min_height": settings.get("min_height"),
         "min_height_mobile": settings.get("min_height_mobile"),
         "min_height_tablet": settings.get("min_height_tablet"),
     }
+    settings["min_height"] = {"unit": "px", "size": mobile_px, "sizes": []}
     settings["min_height_mobile"] = {"unit": "px", "size": mobile_px, "sizes": []}
     if tablet_px is not None:
         settings["min_height_tablet"] = {"unit": "px", "size": tablet_px, "sizes": []}
