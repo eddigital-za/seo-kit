@@ -509,6 +509,28 @@ def wp_rocket_purge_all() -> dict[str, Any]:
                 return {"cleared": True, "method": method, "route": route, "status": response.status_code, "attempts": attempts}
     return {"cleared": False, "discovered_routes": rocket_routes, "attempts": attempts}
 
+
+def elementor_document_snapshot(object_id: int) -> dict[str, Any]:
+    """Read Elementor's own document endpoint without changing the page."""
+    base_url, username, app_password = _credentials()
+    _assert_btsa_host(base_url)
+    response = requests.get(
+        f"{base_url}/wp-json/elementor/v1/documents/{object_id}",
+        auth=(username, app_password),
+        timeout=30,
+        headers={"User-Agent": "BTSA-SEO-Agent/0.4"},
+    )
+    if not response.ok:
+        return {"ok": False, "status": response.status_code}
+    payload = response.json()
+    return {
+        "ok": True,
+        "status": response.status_code,
+        "keys": sorted(payload.keys()) if isinstance(payload, dict) else [],
+        "type": type(payload).__name__,
+    }
+
+
 def elementor_clear_cache() -> dict[str, Any]:
     base_url, username, app_password = _credentials()
     _assert_btsa_host(base_url)
