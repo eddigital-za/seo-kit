@@ -192,6 +192,32 @@ def replace_elementor_text(object_id: int, replacements: dict[str, str], dry_run
     return result
 
 
+
+def inspect_page_text(object_id: int, needles: tuple[str, ...]) -> dict[str, Any]:
+    page = _get(
+        f"pages/{object_id}",
+        {"context": "edit", "_fields": "id,slug,title,content,meta"},
+    )
+    content = (page.get("content") or {}).get("raw", "")
+    elementor = ((page.get("meta") or {}).get("_elementor_data") or "")
+    out = {}
+    for needle in needles:
+        hits = []
+        for source_name, source in (("content", content), ("elementor", elementor)):
+            start = 0
+            while True:
+                pos = source.find(needle, start)
+                if pos < 0:
+                    break
+                hits.append({
+                    "source": source_name,
+                    "context": source[max(0, pos - 180): min(len(source), pos + len(needle) + 220)],
+                })
+                start = pos + len(needle)
+        out[needle] = hits
+    return {"page_id": object_id, "slug": page.get("slug"), "hits": out}
+
+
 def rankmath_update_canonical(object_id: int, canonical_url: str) -> dict[str, Any]:
     base_url, username, app_password = _credentials()
     _assert_btsa_host(base_url)
