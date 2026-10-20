@@ -10,7 +10,7 @@ from app.security import require_agent_key
 from app.gsc import fetch_queries, GSCConfigurationError
 from app.scoring import score_gsc_rows
 from app.seo_kit import run_crawl, run_speed, run_speed_batch
-from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, inspect_elementor_assets, get_estimator_html, optimize_estimator_widget, optimize_post_content_estimator, elementor_clear_cache, restore_estimator_from_backup, capture_estimator_backup, wp_rocket_purge_all, WordPressConfigurationError
+from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, inspect_elementor_assets, get_estimator_html, optimize_estimator_widget, optimize_post_content_estimator, elementor_clear_cache, restore_estimator_from_backup, capture_estimator_backup, wp_rocket_purge_all, apply_elementor_min_height_reservation, restore_elementor_from_backup, WordPressConfigurationError
 
 def _bootstrap_audit():
     try:
@@ -91,6 +91,34 @@ def _bootstrap_audit():
         if os.getenv("SEO_PURGE_WPROCKET", "0") == "1":
             purge = wp_rocket_purge_all()
             print(f"WPROCKET_PURGE {purge}", flush=True)
+        if os.getenv("SEO_CLS_TEST", "0") == "1":
+            page_id = 1211
+            backup_path = "backups/page-1211-elementor-pre-cls-2026-10-20.b64"
+            cls_result = apply_elementor_min_height_reservation(
+                page_id, "32e56a75", mobile_px=1000, tablet_px=950,
+                backup_ref=backup_path, dry_run=False,
+            )
+            print(
+                f"CLS_TEST_WRITE page={page_id} container={cls_result['container_id']} "
+                f"mobile={cls_result['mobile_px']} tablet={cls_result['tablet_px']} "
+                f"estimator_unchanged={cls_result['estimator_unchanged']} "
+                f"backup={backup_path}",
+                flush=True,
+            )
+            test_url = "https://biketransport.co.za/durban-johannesburg-motorcycle-transport/?btsa_cls_test=1"
+            test = run_speed_batch([test_url])[0]["mobile"]
+            if not test.get("ok"):
+                rollback = restore_elementor_from_backup(page_id, backup_path)
+                print(f"CLS_TEST_ROLLBACK reason=pagespeed_failed exact={rollback['verified_exact_backup']}", flush=True)
+            else:
+                cls_value = test["lab"]["cls"]["value"]
+                lcp_value = test["lab"]["lcp"]["value_ms"]
+                print(f"CLS_TEST_RESULT cls={cls_value} lcp={lcp_value}", flush=True)
+                if cls_value >= 0.15:
+                    rollback = restore_elementor_from_backup(page_id, backup_path)
+                    print(f"CLS_TEST_ROLLBACK reason=no_material_improvement cls={cls_value} exact={rollback['verified_exact_backup']}", flush=True)
+                else:
+                    print(f"CLS_TEST_KEEP cls={cls_value}", flush=True)
         if os.getenv("SEO_RENDER_VERIFY", "0") == "1":
             for url in BTSA_PERFORMANCE_URLS:
                 for suffix in ("", "?btsa_seo_verify=1"):
