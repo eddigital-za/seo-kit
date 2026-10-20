@@ -366,6 +366,80 @@ def optimize_post_content_estimator(object_id: int, dry_run: bool = True, backup
 
 
 
+
+def apply_elementor_min_height_reservation(
+    object_id: int,
+    container_id: str,
+    mobile_px: int,
+    tablet_px: int | None,
+    backup_ref: str,
+    dry_run: bool = True,
+) -> dict[str, Any]:
+    """Reserve layout space on one Elementor container without touching estimator HTML."""
+    page = _get(f"pages/{object_id}", {"context": "edit", "_fields": "id,slug,status,modified_gmt,meta"})
+    data = ((page.get("meta") or {}).get("_elementor_data") or "")
+    tree = json.loads(data)
+    before_estimator = get_estimator_html(object_id)
+    found = None
+    stack = list(tree if isinstance(tree, list) else [tree])
+    while stack:
+        item = stack.pop()
+        if not isinstance(item, dict):
+            continue
+        if item.get("id") == container_id:
+            found = item
+            break
+        stack.extend(item.get("elements") or [])
+    if not found:
+        raise RuntimeError(f"Elementor container {container_id} not found on page {object_id}")
+    settings = found.setdefault("settings", {})
+    previous = {
+        "min_height_mobile": settings.get("min_height_mobile"),
+        "min_height_tablet": settings.get("min_height_tablet"),
+    }
+    settings["min_height_mobile"] = {"unit": "px", "size": mobile_px, "sizes": []}
+    if tablet_px is not None:
+        settings["min_height_tablet"] = {"unit": "px", "size": tablet_px, "sizes": []}
+    compact = json.dumps(tree, separators=(",", ":"), ensure_ascii=False)
+    if dry_run:
+        return {"page_id": object_id, "container_id": container_id, "previous": previous, "write_actions_taken": 0}
+    result = update_content(
+        "pages", object_id, {"meta": {"_elementor_data": compact}},
+        dry_run=False, backup_ref=backup_ref,
+    )
+    after_estimator = get_estimator_html(object_id)
+    if after_estimator != before_estimator:
+        raise RuntimeError("ESTIMATOR_GUARD_FAILED: estimator HTML changed during layout reservation")
+    result.update({
+        "container_id": container_id,
+        "previous": previous,
+        "mobile_px": mobile_px,
+        "tablet_px": tablet_px,
+        "estimator_unchanged": True,
+    })
+    return result
+
+
+def restore_elementor_from_backup(object_id: int, backup_path: str) -> dict[str, Any]:
+    """Restore exact Elementor JSON from a persistent base64 backup and verify byte equality."""
+    path = Path(backup_path)
+    if not path.exists():
+        raise RuntimeError(f"Elementor backup not found: {backup_path}")
+    raw = base64.b64decode(path.read_text(encoding="utf-8").strip()).decode("utf-8")
+    json.loads(raw)
+    result = update_content(
+        "pages", object_id, {"meta": {"_elementor_data": raw}},
+        dry_run=False, backup_ref=str(path),
+    )
+    verify = _get(f"pages/{object_id}", {"context": "edit", "_fields": "id,meta"})
+    readback = ((verify.get("meta") or {}).get("_elementor_data") or "")
+    if readback != raw:
+        raise RuntimeError("Elementor rollback read-back mismatch")
+    result["verified_exact_backup"] = True
+    result["backup_ref"] = str(path)
+    return result
+
+
 def capture_estimator_backup(object_ids: tuple[int, ...], backup_dir: str = "backups") -> dict[str, Any]:
     """Persist an exact pre-purge estimator rollback bundle and verify every page first."""
     path = Path(backup_dir)
