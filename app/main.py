@@ -105,6 +105,18 @@ def _bootstrap_audit():
             for page_id in (275, 1211, 1078, 1036, 1217, 1234):
                 asset_info = inspect_elementor_assets(page_id)
                 print(f"ESTIMATOR_ASSETS {asset_info}", flush=True)
+        if os.getenv("SEO_EXPORT_ELEMENTOR", "0") == "1":
+            page_id = int(os.getenv("SEO_EXPORT_ELEMENTOR_PAGE", "1211"))
+            snap = update_content("pages", page_id, {}, dry_run=True)
+            elementor_data = ((snap["before"].get("meta") or {}).get("_elementor_data") or "")
+            if not isinstance(elementor_data, str) or not elementor_data.strip():
+                raise RuntimeError(f"Elementor export missing for page {page_id}")
+            encoded = base64.b64encode(elementor_data.encode("utf-8")).decode("ascii")
+            chunk_size = 6000
+            chunks = [encoded[i:i + chunk_size] for i in range(0, len(encoded), chunk_size)]
+            print(f"ELEMENTOR_EXPORT_META page={page_id} chunks={len(chunks)} bytes={len(elementor_data.encode('utf-8'))}", flush=True)
+            for index, chunk in enumerate(chunks):
+                print(f"ELEMENTOR_EXPORT_{index:03d} {chunk}", flush=True)
         if os.getenv("SEO_EXPORT_ESTIMATOR", "0") == "1":
             html = get_estimator_html(275)
             encoded = base64.b64encode(html.encode("utf-8")).decode("ascii")
