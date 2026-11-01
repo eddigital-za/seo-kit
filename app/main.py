@@ -10,7 +10,7 @@ from app.security import require_agent_key
 from app.gsc import fetch_queries, GSCConfigurationError
 from app.scoring import score_gsc_rows
 from app.seo_kit import run_crawl, run_speed, run_speed_batch
-from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, inspect_elementor_assets, get_estimator_html, optimize_estimator_widget, optimize_post_content_estimator, elementor_clear_cache, restore_estimator_from_backup, capture_estimator_backup, wp_rocket_purge_all, apply_elementor_min_height_reservation, restore_elementor_from_backup, elementor_document_snapshot, inspect_page_text, WordPressConfigurationError
+from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, inspect_elementor_assets, get_estimator_html, optimize_estimator_widget, optimize_post_content_estimator, elementor_clear_cache, restore_estimator_from_backup, capture_estimator_backup, wp_rocket_purge_all, apply_elementor_min_height_reservation, restore_elementor_from_backup, elementor_document_snapshot, inspect_page_text, root_file_check, create_geo_page, WordPressConfigurationError
 
 def _bootstrap_audit():
     try:
@@ -52,6 +52,31 @@ def _bootstrap_audit():
                 f"ober_typo={'ober 160' in raw} meta_keys={sorted(meta.keys())}",
                 flush=True,
             )
+        if os.getenv("SEO_GEO_AUDIT", "0") == "1":
+            for filename in ("robots.txt", "llms.txt"):
+                check = root_file_check(filename)
+                body = check["body"]
+                print(
+                    f"GEO_ROOT_FILE file={filename} status={check['status']} "
+                    f"oai={'OAI-SearchBot' in body} gpt={'GPTBot' in body} "
+                    f"perplexity={'PerplexityBot' in body} claude={'ClaudeBot' in body} "
+                    f"bytes={len(body.encode('utf-8'))}",
+                    flush=True,
+                )
+        if os.getenv("SEO_GEO_CREATE_AI_PAGE", "0") == "1":
+            ai_content = """<p><strong>Bike Transport South Africa</strong> is a South African motorcycle transport service based in KwaZulu-Natal. We arrange insured motorcycle transport for individual riders, dealerships, collectors, buyers and sellers, with nationwide coverage through our own operations and selected transport partners.</p>
+<h2>Motorcycle transport services</h2>
+<p>Our core services include door-to-door motorcycle collection and delivery, scheduled long-distance routes, KZN local and regional transport, dealership movements, and motorcycle pre-purchase inspections in the Durban region.</p>
+<h2>Core routes</h2>
+<ul><li>Durban to Johannesburg and Johannesburg to Durban</li><li>Durban to Bloemfontein and Bloemfontein to Durban</li><li>Durban to Cape Town and Cape Town to Durban</li><li>Johannesburg to Cape Town and Cape Town to Johannesburg</li><li>Local and regional motorcycle transport across KwaZulu-Natal</li></ul>
+<h2>How the service works</h2>
+<p>Customers request a route-specific quote, confirm collection and delivery details, and secure the booking under Bike Transport South Africa's service terms. Motorcycles are loaded using motorcycle-appropriate tie-down equipment and customers receive transport updates during the job.</p>
+<h2>Official information</h2>
+<p>Website: <a href="https://biketransport.co.za/">biketransport.co.za</a>. Service information and current route details should be verified on the official website because schedules, availability and pricing can change.</p>
+<h2>Key official pages</h2>
+<ul><li><a href="https://biketransport.co.za/durban-johannesburg-motorcycle-transport/">Durban to Johannesburg motorcycle transport</a></li><li><a href="https://biketransport.co.za/durban-bloemfontein-motorcycle-transport/">Durban to Bloemfontein motorcycle transport</a></li><li><a href="https://biketransport.co.za/durban-cape-town-motorcycle-transport/">Durban to Cape Town motorcycle transport</a></li><li><a href="https://biketransport.co.za/johannesburg-and-cape-town/">Johannesburg and Cape Town motorcycle transport</a></li><li><a href="https://biketransport.co.za/kzn-local-motorcycle-transport/">KZN local motorcycle transport</a></li><li><a href="https://biketransport.co.za/contact/">Contact Bike Transport South Africa</a></li></ul>"""
+            created = create_geo_page("Bike Transport South Africa - AI & Company Information", "ai-info", ai_content)
+            print(f"GEO_AI_PAGE created={created.get('created')} id={created.get('id') or (created.get('existing') or {}).get('id')} writes={created['write_actions_taken']}", flush=True)
         if os.getenv("SEO_ROUTE_CONTEXT_AUDIT", "0") == "1":
             for page_id in (1078, 1036):
                 exact = inspect_page_text(
