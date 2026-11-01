@@ -193,6 +193,39 @@ def replace_elementor_text(object_id: int, replacements: dict[str, str], dry_run
 
 
 
+
+def root_file_check(filename: str) -> dict[str, Any]:
+    """Read a public root-level GEO discovery file without mutation."""
+    if filename not in {"robots.txt", "llms.txt"}:
+        raise ValueError("Unsupported root file")
+    base_url, _, _ = _credentials()
+    _assert_btsa_host(base_url)
+    response = requests.get(
+        f"{base_url}/{filename}", timeout=30,
+        headers={"User-Agent": "BTSA-GEO-Agent/1.0"},
+    )
+    return {
+        "filename": filename,
+        "status": response.status_code,
+        "content_type": response.headers.get("content-type", ""),
+        "body": response.text[:50000],
+    }
+
+
+def create_geo_page(title: str, slug: str, content: str, status: str = "publish") -> dict[str, Any]:
+    """Create a plain WordPress page for machine-readable GEO resources."""
+    if slug not in {"ai-info", "motorcycle-transport-south-africa"}:
+        raise ValueError("GEO page slug not allowlisted")
+    existing = _get("pages", {"slug": slug, "context": "edit", "per_page": 10, "_fields": "id,slug,status,link"})
+    if existing:
+        return {"created": False, "existing": existing[0], "write_actions_taken": 0}
+    created = _request("POST", "pages", payload={
+        "title": title, "slug": slug, "content": content, "status": status,
+    })
+    verify = _get(f"pages/{created['id']}", {"context": "edit", "_fields": "id,slug,status,link,title,content"})
+    return {"created": True, "id": created.get("id"), "slug": slug, "verified": verify, "write_actions_taken": 1}
+
+
 def inspect_page_text(object_id: int, needles: tuple[str, ...]) -> dict[str, Any]:
     page = _get(
         f"pages/{object_id}",
