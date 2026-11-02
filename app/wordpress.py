@@ -220,7 +220,21 @@ def retire_geo_page(object_id: int) -> dict[str, Any]:
         raise RuntimeError(f"Refusing retirement: page {object_id} slug is {before.get('slug')!r}")
     if before.get("status") == "trash":
         return {"retired": False, "already_trash": True, "before": before, "write_actions_taken": 0}
-    # WordPress core does not accept status=trash through the normal update route.\n    base_url, username, app_password = _credentials()\n    response = requests.delete(\n        f"{base_url}/wp-json/wp/v2/pages/{object_id}",\n        params={"force": "false"}, auth=(username, app_password), timeout=30,\n        headers={"User-Agent": "BTSA-SEO-Agent/0.4"},\n    )\n    if response.status_code in (401, 403):\n        raise PermissionError(f"WordPress authentication/permission failed ({response.status_code})")\n    if not response.ok:\n        raise RuntimeError(f"WordPress trash HTTP {response.status_code}: {response.text[:500]}")\n    updated = response.json()\n    verify = _get(f"pages/{object_id}", {"context": "edit", "_fields": "id,slug,status,title,link"})
+    # WordPress core trashes resources via DELETE with force=false.
+    base_url, username, app_password = _credentials()
+    response = requests.delete(
+        f"{base_url}/wp-json/wp/v2/pages/{object_id}",
+        params={"force": "false"},
+        auth=(username, app_password),
+        timeout=30,
+        headers={"User-Agent": "BTSA-SEO-Agent/0.4"},
+    )
+    if response.status_code in (401, 403):
+        raise PermissionError(f"WordPress authentication/permission failed ({response.status_code})")
+    if not response.ok:
+        raise RuntimeError(f"WordPress trash HTTP {response.status_code}: {response.text[:500]}")
+    updated = response.json()
+    verify = _get(f"pages/{object_id}", {"context": "edit", "_fields": "id,slug,status,title,link"})
     if verify.get("status") != "trash":
         raise RuntimeError("GEO page retirement did not verify")
     return {"retired": True, "before": before, "updated_id": updated.get("id"), "verified": verify, "write_actions_taken": 1}
