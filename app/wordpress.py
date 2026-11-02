@@ -227,7 +227,7 @@ def sitemap_commercial_audit() -> dict[str, Any]:
     ]
     index_url = f"{base_url}/sitemap_index.xml"
     index_response = requests.get(index_url, timeout=30, headers={"User-Agent": "BTSA-SEO-Agent/0.4"})
-    sitemap_urls = re.findall(r"<loc[^>]*>\\s*(.*?)\\s*</loc>", index_response.text, re.I | re.S)
+    sitemap_urls = re.findall(r"<loc[^>]*>\s*(.*?)\s*</loc>", index_response.text, re.I | re.S)
     child_results = []
     discovered = set()
     for sitemap_url in sitemap_urls[:30]:
