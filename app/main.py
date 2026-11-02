@@ -103,7 +103,7 @@ def _bootstrap_audit():
                     f"GEO_ROOT_FILE file={filename} status={check['status']} "
                     f"oai={'OAI-SearchBot' in body} gpt={'GPTBot' in body} "
                     f"perplexity={'PerplexityBot' in body} claude={'ClaudeBot' in body} "
-                    f"bytes={len(body.encode('utf-8'))}",
+                    f"bytes={len(body.encode('utf-8'))} body={body.replace(chr(10), '|')[:1000]}",
                     flush=True,
                 )
         if os.getenv("SEO_GEO_CREATE_AI_PAGE", "0") == "1":
