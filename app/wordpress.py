@@ -211,6 +211,22 @@ def root_file_check(filename: str) -> dict[str, Any]:
         "body": response.text[:50000],
     }
 
+def retire_geo_page(object_id: int) -> dict[str, Any]:
+    """Trash only the explicitly allowlisted mistaken GEO page after verifying its identity."""
+    if object_id != 1432:
+        raise ValueError("Only GEO page 1432 is allowlisted for retirement")
+    before = _get(f"pages/{object_id}", {"context": "edit", "_fields": "id,slug,status,title,link"})
+    if before.get("slug") != "ai-info":
+        raise RuntimeError(f"Refusing retirement: page {object_id} slug is {before.get('slug')!r}")
+    if before.get("status") == "trash":
+        return {"retired": False, "already_trash": True, "before": before, "write_actions_taken": 0}
+    updated = _request("POST", f"pages/{object_id}", payload={"status": "trash"})
+    verify = _get(f"pages/{object_id}", {"context": "edit", "_fields": "id,slug,status,title,link"})
+    if verify.get("status") != "trash":
+        raise RuntimeError("GEO page retirement did not verify")
+    return {"retired": True, "before": before, "updated_id": updated.get("id"), "verified": verify, "write_actions_taken": 1}
+
+
 
 def create_geo_page(title: str, slug: str, content: str, status: str = "publish") -> dict[str, Any]:
     """Create a plain WordPress page for machine-readable GEO resources."""
