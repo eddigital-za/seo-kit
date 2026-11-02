@@ -362,6 +362,26 @@ def audit_live_canonicals() -> list[dict[str, Any]]:
 
 
 
+def audit_commercial_internal_links() -> list[dict[str, Any]]:
+    """Read-only links between the existing homepage and five commercial routes."""
+    pages = {
+        275: "https://biketransport.co.za/",
+        1211: "https://biketransport.co.za/durban-johannesburg-motorcycle-transport/",
+        1217: "https://biketransport.co.za/durban-bloemfontein-motorcycle-transport/",
+        1078: "https://biketransport.co.za/durban-cape-town-motorcycle-transport/",
+        1036: "https://biketransport.co.za/johannesburg-and-cape-town/",
+        1234: "https://biketransport.co.za/kzn-local-motorcycle-transport/",
+    }
+    result = []
+    for page_id, url in pages.items():
+        html = requests.get(url, timeout=30, headers={"User-Agent": "BTSA-SEO-Agent/0.4"}).text
+        hrefs = re.findall(r'<a\\b[^>]*href=["\\\']([^"\\\']+)["\\\']', html, re.I)
+        targets = {target_id: sum(1 for href in hrefs if href.rstrip("/") == target.rstrip("/")) for target_id, target in pages.items() if target_id != page_id}
+        result.append({"page_id": page_id, "targets": targets, "missing": [key for key, count in targets.items() if not count]})
+    return result
+
+
+
 def rankmath_update_canonical(object_id: int, canonical_url: str) -> dict[str, Any]:
     base_url, username, app_password = _credentials()
     _assert_btsa_host(base_url)
