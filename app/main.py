@@ -57,9 +57,11 @@ def _bootstrap_audit():
             print(
                 f"GEO_HOME_BACKUP page={home_backup['page_id']} slug={home_backup['slug']} "
                 f"bytes={home_backup['raw_bytes']} elementor={home_backup['has_elementor']} "
-                f"estimator={home_backup['has_estimator_marker']} b64={home_backup['backup_b64']}",
+                f"estimator={home_backup['has_estimator_marker']} chunks={(len(home_backup['backup_b64']) + 7999) // 8000}",
                 flush=True,
             )
+            for i in range(0, len(home_backup["backup_b64"]), 8000):
+                print(f"GEO_HOME_BACKUP_CHUNK index={i // 8000:03d} data={home_backup['backup_b64'][i:i+8000]}", flush=True)
         if os.getenv("SEO_GEO_APPLY_SCHEMA", "0") == "1":
             schema_result = apply_btsa_geo_schema()
             print(
