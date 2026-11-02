@@ -10,7 +10,7 @@ from app.security import require_agent_key
 from app.gsc import fetch_queries, GSCConfigurationError
 from app.scoring import score_gsc_rows
 from app.seo_kit import run_crawl, run_speed, run_speed_batch
-from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, inspect_elementor_assets, get_estimator_html, optimize_estimator_widget, optimize_post_content_estimator, elementor_clear_cache, restore_estimator_from_backup, capture_estimator_backup, wp_rocket_purge_all, apply_elementor_min_height_reservation, restore_elementor_from_backup, elementor_document_snapshot, inspect_page_text, root_file_check, create_geo_page, retire_geo_page, geo_existing_page_audit, apply_btsa_geo_schema, capture_page_backup, apply_homepage_geo_copy, WordPressConfigurationError
+from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, inspect_elementor_assets, get_estimator_html, optimize_estimator_widget, optimize_post_content_estimator, elementor_clear_cache, restore_estimator_from_backup, capture_estimator_backup, wp_rocket_purge_all, apply_elementor_min_height_reservation, restore_elementor_from_backup, elementor_document_snapshot, inspect_page_text, root_file_check, create_geo_page, retire_geo_page, geo_existing_page_audit, apply_btsa_geo_schema, capture_page_backup, apply_homepage_geo_copy, audit_live_canonicals, WordPressConfigurationError
 
 def _bootstrap_audit():
     try:
@@ -52,6 +52,9 @@ def _bootstrap_audit():
                 f"ober_typo={'ober 160' in raw} meta_keys={sorted(meta.keys())}",
                 flush=True,
             )
+        if os.getenv("SEO_CANONICAL_AUDIT", "0") == "1":
+            for item in audit_live_canonicals():
+                print(f"SEO_CANONICAL_AUDIT_RESULT {item}", flush=True)
         if os.getenv("SEO_GEO_UPDATE_HOME", "0") == "1":
             geo_home = apply_homepage_geo_copy("backups/homepage-275-pre-geo-2026-11-02.b64")
             print(
