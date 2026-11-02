@@ -280,6 +280,30 @@ def inspect_page_text(object_id: int, needles: tuple[str, ...]) -> dict[str, Any
     return {"page_id": object_id, "slug": page.get("slug"), "hits": out}
 
 
+def geo_existing_page_audit(object_ids: tuple[int, ...]) -> list[dict[str, Any]]:
+    """Audit existing canonical pages for GEO/entity/citability signals without creating content."""
+    out = []
+    for object_id in object_ids:
+        page = _get(f"pages/{object_id}", {"context": "edit", "_fields": "id,slug,status,link,title,content,meta"})
+        raw = (page.get("content") or {}).get("raw", "")
+        plain = re.sub(r"<[^>]+>", " ", raw)
+        plain = re.sub(r"\\s+", " ", plain).strip()
+        meta = page.get("meta") or {}
+        out.append({
+            "id": object_id, "slug": page.get("slug"), "status": page.get("status"),
+            "link": page.get("link"), "title": (page.get("title") or {}).get("raw", ""),
+            "word_count": len(plain.split()),
+            "has_brand": "Bike Transport South Africa" in plain,
+            "has_door_to_door": "door-to-door" in plain.lower() or "door to door" in plain.lower(),
+            "has_insured": "insured" in plain.lower() or "insurance" in plain.lower(),
+            "has_faq": "frequently asked" in plain.lower() or "faq" in plain.lower(),
+            "has_jsonld": "application/ld+json" in raw.lower(),
+            "meta_keys": sorted(meta.keys()),
+        })
+    return out
+
+
+
 def rankmath_update_canonical(object_id: int, canonical_url: str) -> dict[str, Any]:
     base_url, username, app_password = _credentials()
     _assert_btsa_host(base_url)
