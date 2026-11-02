@@ -340,6 +340,26 @@ def capture_page_backup(object_id: int) -> dict[str, Any]:
 
 
 
+def audit_live_canonicals() -> list[dict[str, Any]]:
+    """Read-only public canonical audit; does not alter WordPress."""
+    pages = {
+        275: "https://biketransport.co.za/",
+        1211: "https://biketransport.co.za/durban-johannesburg-motorcycle-transport/",
+        1217: "https://biketransport.co.za/durban-bloemfontein-motorcycle-transport/",
+        1078: "https://biketransport.co.za/durban-cape-town-motorcycle-transport/",
+        1036: "https://biketransport.co.za/johannesburg-and-cape-town/",
+        1234: "https://biketransport.co.za/kzn-local-motorcycle-transport/",
+    }
+    out = []
+    for page_id, url in pages.items():
+        response = requests.get(url, timeout=30, headers={"User-Agent": "BTSA-SEO-Agent/0.4"})
+        matches = re.findall(r'<link\\b[^>]*\\brel=["\\\']canonical["\\\'][^>]*>', response.text, re.I)
+        canonical = re.search(r'href=["\\\']([^"\\\']+)', matches[0], re.I).group(1) if matches else None
+        out.append({"page_id": page_id, "status": response.status_code, "expected": url, "canonical": canonical, "matches": len(matches), "correct": canonical == url, "blocked": "request is being verified" in response.text.lower()})
+    return out
+
+
+
 def rankmath_update_canonical(object_id: int, canonical_url: str) -> dict[str, Any]:
     base_url, username, app_password = _credentials()
     _assert_btsa_host(base_url)
