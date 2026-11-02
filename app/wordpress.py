@@ -331,6 +331,80 @@ def rankmath_update_canonical(object_id: int, canonical_url: str) -> dict[str, A
     return {"page_id": object_id, "canonical": canonical_url, "response": payload, "write_actions_taken": 1}
 
 
+def rankmath_update_schemas(object_id: int, schemas: dict[str, Any]) -> dict[str, Any]:
+    """Update Rank Math schema for one page through Rank Math's own REST endpoint."""
+    base_url, username, app_password = _credentials()
+    _assert_btsa_host(base_url)
+    response = requests.post(
+        f"{base_url}/wp-json/rankmath/v1/updateSchemas",
+        json={"objectType": "post", "objectID": object_id, "schemas": schemas},
+        auth=(username, app_password), timeout=30,
+        headers={"User-Agent": "BTSA-SEO-Agent/0.4"},
+    )
+    if response.status_code in (401, 403):
+        raise PermissionError(f"Rank Math schema permission failed ({response.status_code})")
+    if not response.ok:
+        raise RuntimeError(f"Rank Math schema HTTP {response.status_code}; body={response.text[:500]}")
+    return {"page_id": object_id, "response": response.json(), "write_actions_taken": 1}
+
+
+def apply_btsa_geo_schema() -> dict[str, Any]:
+    """Apply conservative schema to existing authority pages. No invented address, hours, reviews or social URLs."""
+    org_id = "https://biketransport.co.za/#organization"
+    site_id = "https://biketransport.co.za/#website"
+    homepage = {
+        "new-btsa-organization": {
+            "@type": "Organization",
+            "@id": org_id,
+            "name": "Bike Transport South Africa",
+            "url": "https://biketransport.co.za/",
+            "description": "Motorcycle transport service operating across South Africa.",
+            "telephone": "+27724075794",
+            "areaServed": {"@type": "Country", "name": "South Africa"},
+        },
+        "new-btsa-website": {
+            "@type": "WebSite",
+            "@id": site_id,
+            "url": "https://biketransport.co.za/",
+            "name": "Bike Transport South Africa",
+            "publisher": {"@id": org_id},
+            "inLanguage": "en-ZA",
+        },
+        "new-btsa-service": {
+            "@type": "Service",
+            "@id": "https://biketransport.co.za/#motorcycle-transport-service",
+            "name": "Motorcycle Transport South Africa",
+            "serviceType": "Motorcycle transport",
+            "url": "https://biketransport.co.za/",
+            "provider": {"@id": org_id},
+            "areaServed": {"@type": "Country", "name": "South Africa"},
+        },
+    }
+    routes = {
+        1211: ("Durban to Johannesburg Motorcycle Transport", "https://biketransport.co.za/durban-johannesburg-motorcycle-transport/", ["Durban", "Johannesburg"]),
+        1217: ("Durban to Bloemfontein Motorcycle Transport", "https://biketransport.co.za/durban-bloemfontein-motorcycle-transport/", ["Durban", "Bloemfontein"]),
+        1078: ("Durban to Cape Town Motorcycle Transport", "https://biketransport.co.za/durban-cape-town-motorcycle-transport/", ["Durban", "Cape Town"]),
+        1036: ("Johannesburg to Cape Town Motorcycle Transport", "https://biketransport.co.za/johannesburg-and-cape-town/", ["Johannesburg", "Cape Town"]),
+        1234: ("KZN Local and Regional Motorcycle Transport", "https://biketransport.co.za/kzn-local-motorcycle-transport/", ["KwaZulu-Natal"]),
+    }
+    results = {"homepage": rankmath_update_schemas(275, homepage), "routes": []}
+    for page_id, (name, url, areas) in routes.items():
+        schema = {
+            f"new-btsa-service-{page_id}": {
+                "@type": "Service",
+                "@id": f"{url}#service",
+                "name": name,
+                "serviceType": "Motorcycle transport",
+                "url": url,
+                "provider": {"@id": org_id},
+                "areaServed": [{"@type": "Place", "name": area} for area in areas],
+            }
+        }
+        results["routes"].append(rankmath_update_schemas(page_id, schema))
+    return results
+
+
+
 def inspect_elementor_assets(object_id: int) -> dict[str, Any]:
     page = _get(f"pages/{object_id}", {"context": "edit", "_fields": "id,slug,meta"})
     data = ((page.get("meta") or {}).get("_elementor_data") or "")
