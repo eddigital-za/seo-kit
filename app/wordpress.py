@@ -147,7 +147,7 @@ def connection_check() -> dict[str, Any]:
     }
 
 
-def replace_content_text(object_id: int, replacements: dict[str, str], dry_run: bool = True) -> dict[str, Any]:
+def replace_content_text(object_id: int, replacements: dict[str, str], dry_run: bool = True, backup_ref: str | None = None) -> dict[str, Any]:
     before = _get(
         f"pages/{object_id}",
         {"context": "edit", "_fields": "id,slug,status,modified_gmt,title,content,excerpt,meta"},
@@ -163,12 +163,12 @@ def replace_content_text(object_id: int, replacements: dict[str, str], dry_run: 
         return {"page_id": object_id, "changed": False, "matches": [], "write_actions_taken": 0}
     if dry_run:
         return {"page_id": object_id, "changed": True, "matches": applied, "write_actions_taken": 0}
-    result = update_content("pages", object_id, {"content": changed}, dry_run=False)
+    result = update_content("pages", object_id, {"content": changed}, dry_run=False, backup_ref=backup_ref)
     result["matches"] = applied
     return result
 
 
-def replace_elementor_text(object_id: int, replacements: dict[str, str], dry_run: bool = True) -> dict[str, Any]:
+def replace_elementor_text(object_id: int, replacements: dict[str, str], dry_run: bool = True, backup_ref: str | None = None) -> dict[str, Any]:
     before = _get(
         f"pages/{object_id}",
         {"context": "edit", "_fields": "id,slug,status,modified_gmt,meta"},
@@ -187,10 +187,29 @@ def replace_elementor_text(object_id: int, replacements: dict[str, str], dry_run
         return {"page_id": object_id, "changed": False, "matches": [], "write_actions_taken": 0}
     if dry_run:
         return {"page_id": object_id, "changed": True, "matches": applied, "write_actions_taken": 0}
-    result = update_content("pages", object_id, {"meta": {"_elementor_data": changed}}, dry_run=False)
+    result = update_content("pages", object_id, {"meta": {"_elementor_data": changed}}, dry_run=False, backup_ref=backup_ref)
     result["matches"] = applied
     return result
 
+
+
+
+def apply_homepage_geo_copy(backup_ref: str) -> dict[str, Any]:
+    """Strengthen existing homepage entity/citability copy without changing layout, H1 or estimator."""
+    replacements = {
+        "We make <strong>motorcycle transport</strong> simple, secure, and stress-free. With trusted routes and reliable delivery, Bike Transport South Africa gives you total peace of mind, wherever your ride needs to go.":
+        "Bike Transport South Africa provides insured, door-to-door <strong>motorcycle transport</strong> across South Africa for private owners, buyers, sellers and dealerships. We collect and deliver motorcycles on scheduled national routes and local KZN services, with regular connections between Durban, Johannesburg, Bloemfontein and Cape Town.",
+        "We're more than just a courier. Bike Transport South Africa was built by riders, for riders. Our reputation is built on transparency, reliability, and a deep respect for your motorcycle. From initial quote to final drop-off, we keep you updated and in control.":
+        "Bike Transport South Africa is a family-run motorcycle transport service based in Durban and operating nationwide. Motorcycles are loaded and secured using professional tie-down equipment, with collection and delivery updates throughout the move. Customers can request a route estimate online and confirm collection and delivery details before transport."
+    }
+    dry_content = replace_content_text(275, replacements, dry_run=True)
+    dry_elementor = replace_elementor_text(275, replacements, dry_run=True)
+    if len(dry_content.get("matches", [])) != 2 or len(dry_elementor.get("matches", [])) != 2:
+        raise RuntimeError(f"Homepage GEO preflight mismatch content={dry_content.get('matches')} elementor={dry_elementor.get('matches')}")
+    content_result = replace_content_text(275, replacements, dry_run=False, backup_ref=backup_ref)
+    elementor_result = replace_elementor_text(275, replacements, dry_run=False, backup_ref=backup_ref)
+    verify = inspect_page_text(275, ("insured, door-to-door", "family-run motorcycle transport service", "motorcycle-calculator-root"))
+    return {"content": content_result, "elementor": elementor_result, "verify": verify, "write_actions_taken": 2}
 
 
 
