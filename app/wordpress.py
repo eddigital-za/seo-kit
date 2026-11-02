@@ -355,7 +355,9 @@ def audit_live_canonicals() -> list[dict[str, Any]]:
         response = requests.get(url, timeout=30, headers={"User-Agent": "BTSA-SEO-Agent/0.4"})
         matches = re.findall(r'<link\\b[^>]*\\brel=["\\\']canonical["\\\'][^>]*>', response.text, re.I)
         canonical = re.search(r'href=["\\\']([^"\\\']+)', matches[0], re.I).group(1) if matches else None
-        out.append({"page_id": page_id, "status": response.status_code, "expected": url, "canonical": canonical, "matches": len(matches), "correct": canonical == url, "blocked": "request is being verified" in response.text.lower()})
+        head = response.text.split("</head>", 1)[0][:60000]
+        spots = [m.start() for m in re.finditer("canonical", head, re.I)]
+        out.append({"page_id": page_id, "status": response.status_code, "expected": url, "canonical": canonical, "matches": len(matches), "correct": canonical == url, "blocked": "request is being verified" in response.text.lower(), "head_bytes": len(head), "canonical_mentions": len(spots), "canonical_context": [head[max(0,p-130):p+180] for p in spots[:3]], "head_prefix": head[:180]})
     return out
 
 
