@@ -227,16 +227,16 @@ def sitemap_commercial_audit() -> dict[str, Any]:
     ]
     index_url = f"{base_url}/sitemap_index.xml"
     index_response = requests.get(index_url, timeout=30, headers={"User-Agent": "BTSA-SEO-Agent/0.4"})
-    sitemap_urls = re.findall(r"<loc>\\s*(.*?)\\s*</loc>", index_response.text, re.I)
+    sitemap_urls = re.findall(r"<loc[^>]*>\\s*(.*?)\\s*</loc>", index_response.text, re.I | re.S)
     child_results = []
     discovered = set()
     for sitemap_url in sitemap_urls[:30]:
         response = requests.get(sitemap_url, timeout=30, headers={"User-Agent": "BTSA-SEO-Agent/0.4"})
-        urls = re.findall(r"<loc>\\s*(.*?)\\s*</loc>", response.text, re.I)
+        urls = re.findall(r"<loc[^>]*>\\s*(.*?)\\s*</loc>", response.text, re.I | re.S)
         discovered.update(urls)
         child_results.append({"url": sitemap_url, "status": response.status_code, "url_count": len(urls)})
     return {
-        "index_status": index_response.status_code,
+        "index_status": index_response.status_code, "index_bytes": len(index_response.text), "index_prefix": index_response.text[:300],
         "sitemaps": child_results,
         "priority": {url: url in discovered for url in priority},
         "discovered_count": len(discovered),
