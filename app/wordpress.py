@@ -376,12 +376,15 @@ def audit_commercial_internal_links() -> list[dict[str, Any]]:
     for page_id, url in pages.items():
         response = requests.get(url, timeout=30, headers={"User-Agent": "BTSA-SEO-Agent/0.4"})
         html = response.text
-        hrefs = re.findall(r'<a\\b[^>]*?href\\s*=\\s*["\\\']([^"\\\']+)["\\\']', html, re.I)
+        hrefs = []
+        for tag in re.findall("<a[^>]*>", html, re.I):
+            match = re.search("href=[\\\"']([^\\\"']+)", tag, re.I)
+            if match:
+                hrefs.append(match.group(1))
         targets = {target_id: sum(1 for href in hrefs if href.rstrip("/") == target.rstrip("/")) for target_id, target in pages.items() if target_id != page_id}
         internal = sorted({href for href in hrefs if href.startswith("https://biketransport.co.za/") or href.startswith("/")})
-        result.append({"page_id": page_id, "targets": targets, "missing": [key for key, count in targets.items() if not count], "status": response.status_code, "html_bytes": len(html), "html_prefix": html[:120], "anchor_tags": len(re.findall(r"<a\\b", html, re.I)), "href_count": len(hrefs), "internal_count": len(internal), "internal_links": internal[:80]})
+        result.append({"page_id": page_id, "targets": targets, "missing": [key for key, count in targets.items() if not count], "status": response.status_code, "html_bytes": len(html), "anchor_tags": len(re.findall("<a[^>]*>", html, re.I)), "href_count": len(hrefs), "internal_count": len(internal), "internal_links": internal[:80]})
     return result
-
 
 
 def rankmath_update_canonical(object_id: int, canonical_url: str) -> dict[str, Any]:
