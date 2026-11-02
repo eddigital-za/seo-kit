@@ -304,6 +304,23 @@ def geo_existing_page_audit(object_ids: tuple[int, ...]) -> list[dict[str, Any]]
 
 
 
+def capture_page_backup(object_id: int) -> dict[str, Any]:
+    """Capture full editable page state for a production-safe content/structure backup."""
+    page = _get(f"pages/{object_id}", {"context": "edit", "_fields": "id,slug,status,modified_gmt,title,content,excerpt,meta"})
+    payload = json.dumps(page, ensure_ascii=False, separators=(",", ":"))
+    encoded = base64.b64encode(payload.encode("utf-8")).decode("ascii")
+    return {
+        "page_id": object_id,
+        "slug": page.get("slug"),
+        "modified_gmt": page.get("modified_gmt"),
+        "backup_b64": encoded,
+        "raw_bytes": len(payload.encode("utf-8")),
+        "has_elementor": "_elementor_data" in (page.get("meta") or {}),
+        "has_estimator_marker": "motorcycle-calculator-root" in payload,
+    }
+
+
+
 def rankmath_update_canonical(object_id: int, canonical_url: str) -> dict[str, Any]:
     base_url, username, app_password = _credentials()
     _assert_btsa_host(base_url)
