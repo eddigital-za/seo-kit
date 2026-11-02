@@ -10,7 +10,7 @@ from app.security import require_agent_key
 from app.gsc import fetch_queries, GSCConfigurationError
 from app.scoring import score_gsc_rows
 from app.seo_kit import run_crawl, run_speed, run_speed_batch
-from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, inspect_elementor_assets, get_estimator_html, optimize_estimator_widget, optimize_post_content_estimator, elementor_clear_cache, restore_estimator_from_backup, capture_estimator_backup, wp_rocket_purge_all, apply_elementor_min_height_reservation, restore_elementor_from_backup, elementor_document_snapshot, inspect_page_text, root_file_check, create_geo_page, WordPressConfigurationError
+from app.wordpress import connection_check, update_content, replace_content_text, replace_elementor_text, rankmath_update_canonical, inspect_elementor_assets, get_estimator_html, optimize_estimator_widget, optimize_post_content_estimator, elementor_clear_cache, restore_estimator_from_backup, capture_estimator_backup, wp_rocket_purge_all, apply_elementor_min_height_reservation, restore_elementor_from_backup, elementor_document_snapshot, inspect_page_text, root_file_check, create_geo_page, retire_geo_page, WordPressConfigurationError
 
 def _bootstrap_audit():
     try:
@@ -50,6 +50,15 @@ def _bootstrap_audit():
                 f"gauteng_kzn_error={'Deliveries across Gauteng' in raw} "
                 f"wrong_jhb_ct_cta={'JHB' in raw and 'Cape Town Transport' in raw} "
                 f"ober_typo={'ober 160' in raw} meta_keys={sorted(meta.keys())}",
+                flush=True,
+            )
+        if os.getenv("SEO_GEO_RETIRE_AI_PAGE", "0") == "1":
+            retired = retire_geo_page(1432)
+            print(
+                f"GEO_AI_PAGE_RETIRE retired={retired.get('retired')} "
+                f"already_trash={retired.get('already_trash', False)} "
+                f"status={(retired.get('verified') or retired.get('before') or {}).get('status')} "
+                f"writes={retired['write_actions_taken']}",
                 flush=True,
             )
         if os.getenv("SEO_GEO_AUDIT", "0") == "1":
