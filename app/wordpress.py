@@ -213,6 +213,36 @@ def apply_homepage_geo_copy(backup_ref: str) -> dict[str, Any]:
 
 
 
+def sitemap_commercial_audit() -> dict[str, Any]:
+    """Read-only verification that priority commercial URLs are discoverable from the live sitemap index."""
+    base_url, _, _ = _credentials()
+    _assert_btsa_host(base_url)
+    priority = [
+        f"{base_url}/",
+        f"{base_url}/durban-johannesburg-motorcycle-transport/",
+        f"{base_url}/durban-bloemfontein-motorcycle-transport/",
+        f"{base_url}/durban-cape-town-motorcycle-transport/",
+        f"{base_url}/johannesburg-and-cape-town/",
+        f"{base_url}/kzn-local-motorcycle-transport/",
+    ]
+    index_url = f"{base_url}/sitemap_index.xml"
+    index_response = requests.get(index_url, timeout=30, headers={"User-Agent": "BTSA-SEO-Agent/0.4"})
+    sitemap_urls = re.findall(r"<loc>\\s*(.*?)\\s*</loc>", index_response.text, re.I)
+    child_results = []
+    discovered = set()
+    for sitemap_url in sitemap_urls[:30]:
+        response = requests.get(sitemap_url, timeout=30, headers={"User-Agent": "BTSA-SEO-Agent/0.4"})
+        urls = re.findall(r"<loc>\\s*(.*?)\\s*</loc>", response.text, re.I)
+        discovered.update(urls)
+        child_results.append({"url": sitemap_url, "status": response.status_code, "url_count": len(urls)})
+    return {
+        "index_status": index_response.status_code,
+        "sitemaps": child_results,
+        "priority": {url: url in discovered for url in priority},
+        "discovered_count": len(discovered),
+    }
+
+
 def root_file_check(filename: str) -> dict[str, Any]:
     """Read a public root-level GEO discovery file without mutation."""
     if filename not in {"robots.txt", "llms.txt"}:
