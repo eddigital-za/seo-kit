@@ -19,9 +19,9 @@ async def read_tool(session, name, arguments):
     if name not in {"list_properties", "get_search_analytics", "get_advanced_search_analytics"}:
         raise ValueError("Only read-only GSC tools are allowed")
     result = await session.call_tool(name, arguments)
-    if result.isError:
-        raise RuntimeError("GSC MCP tool failed: " + name)
     text = "\n".join(item.text for item in result.content if item.type == "text")
+    if result.isError:
+        raise RuntimeError("GSC MCP tool failed: " + name + ": " + text[:500])
     if text.startswith("No search analytics data found"):
         return {"rows": [], "no_data": True}
     try:
@@ -53,6 +53,11 @@ async def collect_gsc(site, country="zaf", days=28, row_limit=250):
                 overview = await read_tool(session, "get_search_analytics", {
                     "site_url": site, "days": days, "dimensions": "query,page", "row_limit": 5,
                 })
+                if os.getenv("SEO_SIGNALS_ACCEPTANCE") == "1":
+                    print("GSC_AUTHENTICATED_ACCEPTANCE " + json.dumps({
+                        "endpoint": endpoint, "properties": properties, "overview": overview,
+                        "write_actions_taken": 0,
+                    }), flush=True)
                 filters = [{"dimension": "country", "operator": "equals", "expression": country}]
                 params = {
                     "site_url": site, "start_date": start.isoformat(), "end_date": end.isoformat(),
