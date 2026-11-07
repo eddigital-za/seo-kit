@@ -1,4 +1,6 @@
 """Email presentation and a narrowly scoped reporting credential."""
+import csv
+import io
 import json
 import hmac
 import os
@@ -78,5 +80,12 @@ def render_email(report):
     parts.append('<p style="font-size:14px;line-height:1.5"><strong>AI referrals</strong><br>' + text(ai.get("sessions", "Unavailable")) + ' visits · ' + text(ai.get("engaged_sessions", "Unavailable")) + ' engaged visits · ' + text(ai.get("key_events", "Unavailable")) + ' recorded goals.<br><span style="' + muted + '">Dated baseline: ' + text(short_date(ai_window.get("start"))) + '–' + text(short_date(ai_window.get("end"))) + '. Automatic refresh pending.</span></p>')
     parts.append('<p style="font-size:14px;line-height:1.5"><strong>Website changes</strong><br>None made by this report.</p></td></tr>')
     parts.append('<tr><td style="padding:18px 26px;background:#f5f8fa;' + muted + '">Position is a Google average; lower is better. Comparisons use matching search phrases and URLs. Search figures cover the listed phrases, not site totals.</td></tr></table></td></tr></table></body></html>')
+    sheet = io.StringIO(newline="")
+    writer = csv.writer(sheet)
+    writer.writerow(["Search", "Intent", "Markets", "Proposed page", "Page match", "Observed URL", "Times seen", "Clicks", "CTR", "Average position", "Monthly search estimate"])
+    for entry in plan.get("keyword_to_page_map", []):
+        for row in entry["observations"] or [{}]:
+            values = [entry["query"], entry["intent"], ", ".join(entry["markets"]), entry["expected_page"], entry["mapping_status"], row.get("page"), row.get("impressions"), row.get("clicks"), row.get("ctr"), row.get("position"), entry["monthly_search_estimate"]]
+            writer.writerow([("'" + str(v)) if isinstance(v, str) and v.startswith(("=", "+", "-", "@")) else v for v in values])
     return {"email_subject": "BTSA SEO at a glance — " + report.get("collected_at", "")[:10],
-            "email_html": "".join(parts), "keyword_map_json": json.dumps(plan, ensure_ascii=False, indent=2)}
+            "email_html": "".join(parts), "keyword_map_csv": sheet.getvalue(), "keyword_map_json": json.dumps(plan, ensure_ascii=False, indent=2)}
