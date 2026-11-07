@@ -58,22 +58,33 @@ async def collect_gsc(site, country="zaf", days=28, row_limit=250):
                         "endpoint": endpoint, "properties": properties, "overview": overview,
                         "write_actions_taken": 0,
                     }), flush=True)
-                filters = [{"dimension": "country", "operator": "equals", "expression": country}]
                 params = {
                     "site_url": site, "start_date": start.isoformat(), "end_date": end.isoformat(),
                     "dimensions": "query,page", "search_type": "WEB", "row_limit": row_limit,
-                    "filters": json.dumps(filters), "data_state": "final",
+                    "filter_dimension": "country", "filter_operator": "equals",
+                    "filter_expression": country, "data_state": "final",
                 }
                 analytics = await read_tool(session, "get_advanced_search_analytics", params)
-                filters.append({"dimension": "device", "operator": "equals", "expression": "MOBILE"})
+                # FastMCP coerces the upstream Optional[str] JSON filters into a
+                # list, which fails validation. Use the scalar country filter,
+                # group by device, and select MOBILE rows without another API.
                 mobile = await read_tool(session, "get_advanced_search_analytics", {
-                    **params, "filters": json.dumps(filters),
+                    **params, "dimensions": "query,page,device",
                 })
+                mobile["rows_before_device_selection"] = len(mobile["rows"])
+                mobile["rows"] = [r for r in mobile["rows"] if str(r.get("device", "")).upper() == "MOBILE"]
+                mobile["device_selected_locally"] = "MOBILE"
+                if os.getenv("SEO_SIGNALS_ACCEPTANCE") == "1":
+                    for offset in range(0, len(mobile["rows"]), 25):
+                        print("GSC_MOBILE_BASELINE " + json.dumps({
+                            "site": site, "country": country, "date_range": mobile.get("date_range"),
+                            "offset": offset, "rows": mobile["rows"][offset:offset + 25],
+                        }), flush=True)
     return {
         "source": "private_gsc_mcp", "endpoint": endpoint, "site": site, "country": country,
         "properties": properties, "overview": overview, "analytics": analytics,
         "mobile_organic_baseline": mobile, "row_limit": row_limit,
-        "baseline_note": "GSC average positions for observed query/page rows; not a live SERP rank check. Capped rows are not site totals.",
+        "baseline_note": "GSC average positions, not live SERP ranks. Mobile rows are selected from capped country query/page/device results; capped rows are not site totals.",
         "paid_api_calls": 0, "write_actions_taken": 0,
     }
 

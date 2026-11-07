@@ -1,5 +1,6 @@
 import asyncio
 import json
+import io
 import os
 import sys
 import types
@@ -8,6 +9,7 @@ from contextlib import asynccontextmanager, nullcontext
 from unittest.mock import patch
 
 from app.gsc_mcp import collect_gsc, private_url, read_tool
+from app.signals import competitor_metadata
 
 
 def run(coroutine):
@@ -20,6 +22,23 @@ def run(coroutine):
 
 
 class SignalsTest(unittest.TestCase):
+    def test_competitor_report_only_reads_selected_metadata(self):
+        responses = [io.BytesIO(json.dumps({
+            "watch1": {"url": "https://bikes2go.co.za/", "last_checked": 123},
+            "other": {"url": "https://news.ycombinator.com/"},
+        }).encode()), io.BytesIO(b"Bikes2Go | Reliable Bike Transport\nMotorcycle transport description"), io.BytesIO(b'{"123": "snapshot.txt"}')]
+        requests = []
+        class Opener:
+            def open(self, req, timeout):
+                requests.append(req)
+                return responses.pop(0)
+        with patch.dict(os.environ, {"COMPETITOR_METADATA_URL": "http://competitor.railway.internal:8080", "COMPETITOR_API_KEY": "test-key"}), patch("app.signals.build_opener", return_value=Opener()):
+            result = competitor_metadata()
+        self.assertEqual(result["competitor_watch_count"], 1)
+        self.assertEqual(result["watches"][0]["history"], {"123": "snapshot.txt"})
+        self.assertEqual([r.get_method() for r in requests], ["GET", "GET", "GET"])
+        self.assertTrue(all(r.get_header("X-api-key") == "test-key" for r in requests))
+
     def test_private_host_boundary(self):
         self.assertEqual(private_url("http://gsc.railway.internal:3001/sse"), "http://gsc.railway.internal:3001/sse")
         for url in ("https://example.com/sse", "http://gsc.railway.internal.evil/sse",
@@ -51,7 +70,7 @@ class SignalsTest(unittest.TestCase):
                 pass
             async def call_tool(self, name, args):
                 calls.append((name, args))
-                data = {"properties": [{"site_url": "https://biketransport.co.za/"}]} if name == "list_properties" else {"rows": [{"query": "bike transport", "page": "https://biketransport.co.za/", "clicks": 3, "impressions": 40, "ctr": .075, "position": 4.2}]}
+                data = {"properties": [{"site_url": "https://biketransport.co.za/"}]} if name == "list_properties" else {"rows": [{"query": "bike transport", "page": "https://biketransport.co.za/", "device": "MOBILE", "clicks": 3, "impressions": 40, "ctr": .075, "position": 4.2}, {"query": "other", "device": "DESKTOP"}]}
                 return types.SimpleNamespace(isError=False, content=[types.SimpleNamespace(type="text", text=json.dumps(data))])
         @asynccontextmanager
         async def stream(*args, **kwargs):
@@ -63,11 +82,12 @@ class SignalsTest(unittest.TestCase):
             result = run(collect_gsc("https://biketransport.co.za/"))
             self.assertEqual(calls[0][0], "list_properties")
             self.assertEqual(calls[1][0], "get_search_analytics")
-            self.assertEqual(json.loads(calls[-1][1]["filters"]), [
-                {"dimension": "country", "operator": "equals", "expression": "zaf"},
-                {"dimension": "device", "operator": "equals", "expression": "MOBILE"}])
+            self.assertEqual(calls[-1][1]["filter_dimension"], "country")
+            self.assertEqual(calls[-1][1]["filter_expression"], "zaf")
+            self.assertEqual(calls[-1][1]["dimensions"], "query,page,device")
             self.assertEqual(calls[-1][1]["data_state"], "final")
             self.assertEqual(result["mobile_organic_baseline"]["rows"][0]["clicks"], 3)
+            self.assertEqual(len(result["mobile_organic_baseline"]["rows"]), 1)
             calls.clear()
             with self.assertRaises(ValueError):
                 run(collect_gsc("https://wrong-property.example/"))
