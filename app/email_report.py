@@ -13,6 +13,29 @@ def valid_report_key(value):
     return bool(expected and value and hmac.compare_digest(expected, value))
 
 
+def ga4_referrals(payload):
+    from datetime import date
+    raw = payload["ga4_report"]
+    if isinstance(raw, str):
+        raw = json.loads(raw)
+    expected = ["sessions", "engagedSessions", "keyEvents"]
+    if [h["name"] for h in raw["metricHeaders"]] != expected:
+        raise ValueError("Unexpected GA4 metrics")
+    start, end = payload["start_date"], payload["end_date"]
+    if date.fromisoformat(start) > date.fromisoformat(end):
+        raise ValueError("Invalid date range")
+    rows = raw.get("rows", [])
+    if len(rows) > 1 or (not rows and raw.get("rowCount", 0) != 0):
+        raise ValueError("Expected an aggregate GA4 result")
+    values = [float(v["value"]) for v in rows[0]["metricValues"]] if rows else [0, 0, 0]
+    if len(values) != 3 or any(v < 0 or not __import__("math").isfinite(v) for v in values):
+        raise ValueError("Invalid GA4 values")
+    return {"status": "live_report", "source": "GA4 via Make", "property": "properties/495141074",
+            "date_range": {"start": start, "end": end}, "sessions": values[0],
+            "engaged_sessions": values[1], "key_events": values[2], "metadata": raw.get("metadata", {}),
+            "note": "Selected AI session sources only; does not measure citations or zero-click visibility."}
+
+
 def render_email(report):
     def text(value):
         return escape(str(value if value is not None else "—"))
@@ -37,6 +60,8 @@ def render_email(report):
     lead = opportunities[0] if opportunities else None
     ai = report.get("ai_referrals", {})
     ai_window = ai.get("date_range", {})
+    ai_label = "Fresh GA4 report: " if ai.get("status") == "live_report" else "Dated baseline: "
+    ai_note = ". Refreshed with this weekly report." if ai.get("status") == "live_report" else ". Automatic refresh pending."
     competitors = report.get("competitors", {})
     watches = competitors.get("watches", [])
     muted = 'font-size:13px;line-height:1.5;color:#64748b'
@@ -77,7 +102,7 @@ def render_email(report):
     else:
         competitor_line = "No competitor page checked yet."
     parts.append('<p style="font-size:14px;line-height:1.5"><strong>Competitors</strong><br>' + competitor_line + '</p>')
-    parts.append('<p style="font-size:14px;line-height:1.5"><strong>AI referrals</strong><br>' + text(ai.get("sessions", "Unavailable")) + ' visits · ' + text(ai.get("engaged_sessions", "Unavailable")) + ' engaged visits · ' + text(ai.get("key_events", "Unavailable")) + ' recorded goals.<br><span style="' + muted + '">Dated baseline: ' + text(short_date(ai_window.get("start"))) + '–' + text(short_date(ai_window.get("end"))) + '. Automatic refresh pending.</span></p>')
+    parts.append('<p style="font-size:14px;line-height:1.5"><strong>AI referrals</strong><br>' + text(ai.get("sessions", "Unavailable")) + ' visits · ' + text(ai.get("engaged_sessions", "Unavailable")) + ' engaged visits · ' + text(ai.get("key_events", "Unavailable")) + ' recorded goals.<br><span style="' + muted + '">' + ai_label + text(short_date(ai_window.get("start"))) + '–' + text(short_date(ai_window.get("end"))) + ai_note + '</span></p>')
     parts.append('<p style="font-size:14px;line-height:1.5"><strong>Website changes</strong><br>None made by this report.</p></td></tr>')
     parts.append('<tr><td style="padding:18px 26px;background:#f5f8fa;' + muted + '">Position is a Google average; lower is better. Comparisons use matching search phrases and URLs. Search figures cover the listed phrases, not site totals.</td></tr></table></td></tr></table></body></html>')
     sheet = io.StringIO(newline="")

@@ -2,7 +2,7 @@ import os
 import threading
 import base64
 import requests
-from fastapi import Depends, FastAPI, HTTPException, Header
+from fastapi import Depends, FastAPI, HTTPException, Header, Body
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from app.settings import load_config
@@ -414,12 +414,19 @@ async def audit_weekly():
 
 
 @app.post("/reports/weekly-email")
-async def weekly_email(x_report_key: str | None = Header(default=None)):
+async def weekly_email(x_report_key: str | None = Header(default=None), payload: dict | None = Body(default=None)):
     from app.email_report import valid_report_key, render_email
     from app.signals import weekly_signals
     if not valid_report_key(x_report_key):
         raise HTTPException(status_code=401, detail="Invalid report key")
-    return render_email(await weekly_signals())
+    report = await weekly_signals()
+    if payload is not None:
+        from app.email_report import ga4_referrals
+        try:
+            report["ai_referrals"] = ga4_referrals(payload)
+        except (ValueError, KeyError, TypeError) as exc:
+            raise HTTPException(status_code=422, detail="Invalid GA4 report payload") from exc
+    return render_email(report)
 
 
 @app.get("/audit/weekly/latest", dependencies=[Depends(require_agent_key)])
