@@ -17,7 +17,7 @@ def render_email(report):
     def page_name(url):
         parsed = urlsplit(url or "")
         if parsed.path in ("", "/"):
-            return "Homepage" + (" · tagged URL" if parsed.query else "")
+            return "Homepage" + (" · alternate link" if parsed.query else "")
         return parsed.path.strip("/").replace("-", " ").capitalize()
 
     def short_date(value):
@@ -53,9 +53,9 @@ def render_email(report):
             parts.append('<td width="33%"><strong style="font-size:29px;color:#0c6577">' + text(value) + '</strong><div style="font-size:12px;line-height:1.4;margin-top:6px">' + label + '</div></td>')
         parts.append('</tr></table><p style="' + muted + ';margin:8px 0 20px">These figures describe this search phrase and page, not all website traffic.</p>')
         parts.append('<div style="background:#fff4d9;border-left:4px solid #e4a526;padding:16px 18px"><strong style="font-size:13px;color:#815700">ONE PRIORITY</strong><p style="font-size:17px;line-height:1.45;margin:8px 0">Review how this page answers “' + text(lead.get("keyword", lead.get("query"))) + '”, then propose one improvement.</p><div style="font-size:13px;color:#705b32">Your approval comes before any website edit.</div></div>')
-    if opportunities:
-        parts.append('<h2 style="font-size:18px;margin:25px 0 12px">Three searches to watch</h2><table width="100%" cellspacing="0" cellpadding="9" style="font-size:14px;border-collapse:collapse"><tr style="background:#f1f5f9;text-align:left"><th>Search / page</th><th>Seen</th><th>Clicks</th></tr>')
-        for row in opportunities[:3]:
+    if len(opportunities) > 1:
+        parts.append('<h2 style="font-size:18px;margin:25px 0 12px">Also worth watching</h2><table width="100%" cellspacing="0" cellpadding="9" style="font-size:14px;border-collapse:collapse"><tr style="background:#f1f5f9;text-align:left"><th>Search / page</th><th>Seen</th><th>Clicks</th></tr>')
+        for row in opportunities[1:4]:
             parts.append('<tr><td style="border-bottom:1px solid #e5edf2">' + text(row.get("keyword", row.get("query"))) + '<br><span style="' + muted + '">' + text(page_name(row.get("page"))) + '</span></td><td style="border-bottom:1px solid #e5edf2">' + text(row.get("impressions")) + '</td><td style="border-bottom:1px solid #e5edf2">' + text(row.get("clicks")) + '</td></tr>')
         parts.append('</table>')
     parts.append('<h2 style="font-size:18px;margin:25px 0 12px">Other signals</h2>')
