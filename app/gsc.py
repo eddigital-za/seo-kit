@@ -33,6 +33,9 @@ def _access_token() -> str:
     return response.json()["access_token"]
 
 def fetch_queries(site: str, country: str = "zaf", days: int = 28, row_limit: int = 250):
+    if os.getenv("GSC_MCP_URL"):
+        from app.gsc_mcp import fetch_mcp_queries
+        return fetch_mcp_queries(site, country, days, row_limit)
     token = _access_token()
     end = date.today() - timedelta(days=1)
     start = end - timedelta(days=days - 1)

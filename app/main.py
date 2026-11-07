@@ -256,6 +256,9 @@ def _bootstrap_audit():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if os.getenv("SEO_SIGNALS_ACCEPTANCE", "0") == "1":
+        from app.signals import acceptance_once
+        threading.Thread(target=acceptance_once, daemon=True).start()
     if os.getenv("WP_VERIFY_ON_STARTUP", "0") == "1":
         try:
             result = connection_check()
@@ -395,6 +398,20 @@ def audit_full():
         "gsc": audit_gsc(),
         "guardrails": config["guardrails"],
     }
+
+
+@app.post("/audit/weekly", dependencies=[Depends(require_agent_key)])
+async def audit_weekly():
+    from app.signals import weekly_signals
+    return await weekly_signals()
+
+
+@app.get("/audit/weekly/latest", dependencies=[Depends(require_agent_key)])
+def latest_weekly():
+    from app.signals import LATEST_REPORT
+    if LATEST_REPORT is None:
+        raise HTTPException(status_code=404, detail="No signals collected in this process yet")
+    return LATEST_REPORT
 
 
 @app.post("/diagnostic/crawl-once")
