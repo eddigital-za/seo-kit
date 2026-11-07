@@ -1,4 +1,5 @@
 """Email presentation and a narrowly scoped reporting credential."""
+import json
 import hmac
 import os
 from html import escape
@@ -27,6 +28,7 @@ def render_email(report):
         except (TypeError, ValueError):
             return "Not available"
 
+    plan = report.get("commercial_plan", {})
     gsc = report.get("gsc", {})
     window = gsc.get("analytics", {}).get("date_range", {})
     opportunities = report.get("top_opportunities", [])
@@ -52,7 +54,13 @@ def render_email(report):
         for value, label in [(lead.get("impressions"), "Seen on Google"), (lead.get("clicks"), "Clicks to your site"), (lead.get("position"), "Avg. position")]:
             parts.append('<td width="33%"><strong style="font-size:29px;color:#0c6577">' + text(value) + '</strong><div style="font-size:12px;line-height:1.4;margin-top:6px">' + label + '</div></td>')
         parts.append('</tr></table><p style="' + muted + ';margin:8px 0 20px">These figures describe this search phrase and page, not all website traffic.</p>')
-        parts.append('<div style="background:#fff4d9;border-left:4px solid #e4a526;padding:16px 18px"><strong style="font-size:13px;color:#815700">ONE PRIORITY</strong><p style="font-size:17px;line-height:1.45;margin:8px 0">Review how this page answers “' + text(lead.get("keyword", lead.get("query"))) + '”, then propose one improvement.</p><div style="font-size:13px;color:#705b32">Your approval comes before any website edit.</div></div>')
+        parts.append('<div style="background:#fff4d9;border-left:4px solid #e4a526;padding:16px 18px"><strong style="font-size:13px;color:#815700">ONE PRIORITY</strong><p style="font-size:17px;line-height:1.45;margin:8px 0">' + text(plan.get("recommended_action", "Review this page and prepare one improvement proposal.")) + '</p><div style="font-size:13px;color:#705b32">Your approval comes before any website edit.</div></div>')
+    if plan.get("markets"):
+        parts.append('<h2 style="font-size:18px;margin:25px 0 12px">Five-market coverage</h2>')
+        parts.append('<p style="' + muted + '">' + ' · '.join(text(m["market"]) + ': ' + text(m["observed_commercial_queries"]) + ' searches observed' for m in plan["markets"]) + '</p>')
+        parts.append('<p style="' + muted + '">Full search-to-page map attached. City-specific mobile top-10 tracking is not connected; Google mobile averages are included instead.</p>')
+    if lead and lead.get("previous_impressions") is not None:
+        parts.append('<p style="font-size:14px;line-height:1.5"><strong>Previous 28 days → latest 28 days</strong><br>Times seen: ' + text(lead["previous_impressions"]) + ' → ' + text(lead.get("impressions")) + ' · Clicks: ' + text(lead["previous_clicks"]) + ' → ' + text(lead.get("clicks")) + '. Same search and URL; this does not prove an SEO change caused the difference.</p>')
     if len(opportunities) > 1:
         parts.append('<h2 style="font-size:18px;margin:25px 0 12px">Also worth watching</h2><table width="100%" cellspacing="0" cellpadding="9" style="font-size:14px;border-collapse:collapse"><tr style="background:#f1f5f9;text-align:left"><th>Search / page</th><th>Seen</th><th>Clicks</th></tr>')
         for row in opportunities[1:4]:
@@ -69,6 +77,6 @@ def render_email(report):
     parts.append('<p style="font-size:14px;line-height:1.5"><strong>Competitors</strong><br>' + competitor_line + '</p>')
     parts.append('<p style="font-size:14px;line-height:1.5"><strong>AI referrals</strong><br>' + text(ai.get("sessions", "Unavailable")) + ' visits · ' + text(ai.get("engaged_sessions", "Unavailable")) + ' engaged visits · ' + text(ai.get("key_events", "Unavailable")) + ' recorded goals.<br><span style="' + muted + '">Dated baseline: ' + text(short_date(ai_window.get("start"))) + '–' + text(short_date(ai_window.get("end"))) + '. Automatic refresh pending.</span></p>')
     parts.append('<p style="font-size:14px;line-height:1.5"><strong>Website changes</strong><br>None made by this report.</p></td></tr>')
-    parts.append('<tr><td style="padding:18px 26px;background:#f5f8fa;' + muted + '">Position is a Google average; lower is better. No week-to-week improvement is claimed yet. Search figures cover the listed phrases, not site totals.</td></tr></table></td></tr></table></body></html>')
+    parts.append('<tr><td style="padding:18px 26px;background:#f5f8fa;' + muted + '">Position is a Google average; lower is better. Comparisons use matching search phrases and URLs. Search figures cover the listed phrases, not site totals.</td></tr></table></td></tr></table></body></html>')
     return {"email_subject": "BTSA SEO at a glance — " + report.get("collected_at", "")[:10],
-            "email_html": "".join(parts)}
+            "email_html": "".join(parts), "keyword_map_json": json.dumps(plan, ensure_ascii=False, indent=2)}

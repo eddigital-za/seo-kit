@@ -9,7 +9,7 @@ from urllib.request import Request, build_opener, ProxyHandler, HTTPRedirectHand
 
 from app.gsc_mcp import collect_gsc, private_url
 from app.settings import load_config
-from app.scoring import score_gsc_rows
+from app.commercial_plan import load_plan, build_commercial_plan
 
 LATEST_REPORT = None
 
@@ -59,10 +59,11 @@ def competitor_metadata():
         watches = json.load(response)
     if not isinstance(watches, dict):
         raise ValueError("Unexpected changedetection watch response")
+    targets = {item["url"] for item in load_plan()["competitors"]}
     # Return competitor HTML metadata history, never settings or credentials.
     selected = [{"id": ident, **{k: watch.get(k) for k in
                          ("url", "title", "last_checked", "last_changed", "last_error", "last_check_status", "paused")}}
-                        for ident, watch in watches.items() if watch.get("url") == "https://bikes2go.co.za/"]
+                        for ident, watch in watches.items() if watch.get("url") in targets]
     for watch in selected:
         with opener.open(Request(endpoint + "/api/v1/watch/" + watch["id"] + "/history/latest", headers=headers), timeout=20) as response:
             watch["html_metadata_snapshot"] = response.read(20000).decode("utf-8")
@@ -92,23 +93,21 @@ def setup_competitor_watch_once():
         response = session.get(endpoint + "/api/v1/watch", timeout=20, allow_redirects=False)
         response.raise_for_status()
         existing = response.json()
-        target = "https://bikes2go.co.za/"
-        if not any(w.get("url") == target for w in existing.values()):
+        created = []
+        for target in load_plan()["competitors"]:
+            if any(w.get("url") == target["url"] for w in existing.values()):
+                continue
             response = session.post(endpoint + "/api/v1/watch", json={
-                "url": target, "title": "BTSA competitor metadata: Bikes2Go",
+                "url": target["url"], "title": "BTSA competitor metadata: " + target["name"],
                 "include_filters": ["xpath://title/text()", "xpath://meta[translate(@name, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')='description']/@content"],
                 "fetch_backend": "html_requests", "notification_urls": [], "notification_muted": True,
                 "time_between_check": {"weeks": 1}, "time_between_check_use_default": False,
             }, timeout=30, allow_redirects=False)
             response.raise_for_status()
-            print("COMPETITOR_WATCH_CREATED " + json.dumps(response.json()), flush=True)
-            # One bounded wait for the initial asynchronous fetch, no polling loop.
-            time.sleep(20)
-        else:
-            ident = next(ident for ident, watch in existing.items() if watch.get("url") == target)
-            response = session.get(endpoint + "/api/v1/watch/" + ident, params={"recheck": "1"}, timeout=20, allow_redirects=False)
-            response.raise_for_status()
-            time.sleep(20)
+            created.append(target["name"])
+        print("COMPETITOR_WATCHES_CREATED " + json.dumps(created), flush=True)
+        if created:
+            time.sleep(20)  # One bounded initial-fetch wait; no polling loop.
         print("COMPETITOR_METADATA_ACCEPTANCE " + json.dumps(competitor_metadata()), flush=True)
 
 
@@ -128,10 +127,10 @@ async def weekly_signals():
         report["competitors"] = await asyncio.to_thread(competitor_metadata)
     except Exception as exc:
         report["competitors"] = {"status": "error", "endpoint": os.getenv("COMPETITOR_METADATA_URL"), "error": error_detail(exc)}
-    rows = [{**row, "keyword": row.get("query", "")} for row in report["gsc"].get("analytics", {}).get("rows", [])]
-    report["top_opportunities"] = score_gsc_rows(rows, config["seo"]["strike_zone_min"], config["seo"]["strike_zone_max"])[:30]
+    report["commercial_plan"] = build_commercial_plan(report["gsc"])
+    report["top_opportunities"] = report["commercial_plan"]["top_opportunities"]
     report["recommended_next_action"] = {
-        "action": "Review the leading query/page opportunity and its intent before proposing a website edit.",
+        "action": report["commercial_plan"]["recommended_action"],
         "evidence": report["top_opportunities"][:1], "website_approval_required": True,
     }
     report["verified"] = "properties" in report["gsc"] and report["competitors"].get("competitor_watch_count", 0) > 0
@@ -148,8 +147,9 @@ def acceptance_once():
     report = asyncio.run(weekly_signals())
     gsc = report["gsc"]
     summary = {**report, "gsc": {**gsc}}
+    summary["commercial_plan"] = {k: v for k, v in report["commercial_plan"].items() if k not in ("keyword_to_page_map", "mobile_rows", "demand_snapshot", "top_opportunities")}
     summary["top_opportunities"] = report["top_opportunities"][:3]
-    for name in ("overview", "analytics", "mobile_organic_baseline"):
+    for name in ("overview", "analytics", "previous_analytics", "mobile_organic_baseline"):
         if name in gsc:
             summary["gsc"][name] = {**gsc[name], "rows": gsc[name].get("rows", [])[:5],
                                      "returned_row_count": len(gsc[name].get("rows", []))}

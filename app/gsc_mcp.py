@@ -65,6 +65,11 @@ async def collect_gsc(site, country="zaf", days=28, row_limit=250):
                     "filter_expression": country, "data_state": "final",
                 }
                 analytics = await read_tool(session, "get_advanced_search_analytics", params)
+                previous_end = start - timedelta(days=1)
+                previous = await read_tool(session, "get_advanced_search_analytics", {
+                    **params, "start_date": (previous_end - timedelta(days=days - 1)).isoformat(),
+                    "end_date": previous_end.isoformat(),
+                })
                 # FastMCP coerces the upstream Optional[str] JSON filters into a
                 # list, which fails validation. Use the scalar country filter,
                 # group by device, and select MOBILE rows without another API.
@@ -83,7 +88,7 @@ async def collect_gsc(site, country="zaf", days=28, row_limit=250):
     return {
         "source": "private_gsc_mcp", "endpoint": endpoint, "site": site, "country": country,
         "properties": properties, "overview": overview, "analytics": analytics,
-        "mobile_organic_baseline": mobile, "row_limit": row_limit,
+        "previous_analytics": previous, "mobile_organic_baseline": mobile, "row_limit": row_limit,
         "baseline_note": "GSC average positions, not live SERP ranks. Mobile rows are selected from capped country query/page/device results; capped rows are not site totals.",
         "paid_api_calls": 0, "write_actions_taken": 0,
     }

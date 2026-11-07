@@ -1,0 +1,256 @@
+{
+  "version": 1,
+  "markets": [
+    "National",
+    "Durban",
+    "Johannesburg",
+    "Bloemfontein",
+    "Cape Town"
+  ],
+  "country": "zaf",
+  "language": "en",
+  "device": "MOBILE",
+  "targets": [
+    {
+      "query": "motorcycle transport south africa",
+      "markets": [
+        "National"
+      ],
+      "expected_page": "https://biketransport.co.za/"
+    },
+    {
+      "query": "motorbike transport",
+      "markets": [
+        "National"
+      ],
+      "expected_page": "https://biketransport.co.za/"
+    },
+    {
+      "query": "bike transport south africa",
+      "markets": [
+        "National"
+      ],
+      "expected_page": "https://biketransport.co.za/",
+      "intent": "brand_or_generic"
+    },
+    {
+      "query": "motorcycle transport durban",
+      "markets": [
+        "Durban"
+      ],
+      "expected_page": "https://biketransport.co.za/kzn-local-motorcycle-transport/",
+      "mapping_note": "Regional KZN page; validate fit for Durban-only intent."
+    },
+    {
+      "query": "motorcycle transport johannesburg",
+      "markets": [
+        "Johannesburg"
+      ],
+      "expected_page": null,
+      "mapping_note": "Dedicated city landing page not verified; review existing route coverage first."
+    },
+    {
+      "query": "motorcycle transport bloemfontein",
+      "markets": [
+        "Bloemfontein"
+      ],
+      "expected_page": null,
+      "mapping_note": "Dedicated city landing page not verified; review existing route coverage first."
+    },
+    {
+      "query": "motorcycle transport cape town",
+      "markets": [
+        "Cape Town"
+      ],
+      "expected_page": null,
+      "mapping_note": "Dedicated city landing page not verified; review existing route coverage first."
+    },
+    {
+      "query": "motorcycle transport durban to johannesburg",
+      "markets": [
+        "Durban",
+        "Johannesburg"
+      ],
+      "expected_page": "https://biketransport.co.za/durban-johannesburg-motorcycle-transport/"
+    },
+    {
+      "query": "motorcycle transport durban to bloemfontein",
+      "markets": [
+        "Durban",
+        "Bloemfontein"
+      ],
+      "expected_page": "https://biketransport.co.za/durban-bloemfontein-motorcycle-transport/"
+    },
+    {
+      "query": "motorcycle transport durban to cape town",
+      "markets": [
+        "Durban",
+        "Cape Town"
+      ],
+      "expected_page": "https://biketransport.co.za/durban-cape-town-motorcycle-transport/"
+    },
+    {
+      "query": "motorcycle transport johannesburg to cape town",
+      "markets": [
+        "Johannesburg",
+        "Cape Town"
+      ],
+      "expected_page": "https://biketransport.co.za/johannesburg-and-cape-town/"
+    },
+    {
+      "query": "motorcycle transport prices south africa",
+      "markets": [
+        "National"
+      ],
+      "expected_page": "https://biketransport.co.za/cost-to-transport-motorcycle-south-africa/"
+    }
+  ],
+  "competitors": [
+    {
+      "url": "https://bikes2go.co.za/",
+      "name": "Bikes2Go"
+    },
+    {
+      "url": "https://www.cmassist.co.za/",
+      "name": "Cape Moto Assist"
+    },
+    {
+      "url": "https://www.biketransportsa.co.za/",
+      "name": "Ride-All-Over"
+    }
+  ],
+  "demand_snapshot": {
+    "source": "Google Keyword Planner via AdKit",
+    "requested_location": "ZA",
+    "language": "en",
+    "captured_date": "2026-11-08",
+    "note": "Monthly estimates, not observed site traffic. Response did not echo geography; requested South Africa. No returned estimate means unknown, not zero.",
+    "estimates": [
+      {
+        "query": "motorcycle transport south africa",
+        "monthly_searches": 40
+      },
+      {
+        "query": "motorbike transport",
+        "monthly_searches": 70
+      },
+      {
+        "query": "bike transport south africa",
+        "monthly_searches": 110
+      },
+      {
+        "query": "motorcycle transport johannesburg",
+        "monthly_searches": 10
+      },
+      {
+        "query": "motorcycle transport cape town",
+        "monthly_searches": 50
+      },
+      {
+        "query": "motorcycle transport johannesburg to cape town",
+        "monthly_searches": 30
+      },
+      {
+        "query": "motorbike delivery",
+        "monthly_searches": 260
+      },
+      {
+        "query": "motorbike transport quote",
+        "monthly_searches": 10
+      },
+      {
+        "query": "motorbike transport service",
+        "monthly_searches": 30
+      },
+      {
+        "query": "motorbike transport near me",
+        "monthly_searches": 10
+      },
+      {
+        "query": "motorbike movers",
+        "monthly_searches": 10
+      },
+      {
+        "query": "motorbike transport interstate",
+        "monthly_searches": 10
+      },
+      {
+        "query": "motorbike transport prices",
+        "monthly_searches": 30
+      },
+      {
+        "query": "motorbike freight",
+        "monthly_searches": 10
+      },
+      {
+        "query": "motorbike shipping",
+        "monthly_searches": 10
+      },
+      {
+        "query": "cheap motorbike transport",
+        "monthly_searches": 10
+      },
+      {
+        "query": "motorbike freight interstate",
+        "monthly_searches": null
+      },
+      {
+        "query": "motorbike delivery cost",
+        "monthly_searches": 10
+      },
+      {
+        "query": "motorbike logistics",
+        "monthly_searches": 10
+      },
+      {
+        "query": "motorbike removals",
+        "monthly_searches": 10
+      },
+      {
+        "query": "motor bike delivery service",
+        "monthly_searches": 20
+      },
+      {
+        "query": "motorbike movers near me",
+        "monthly_searches": 10
+      },
+      {
+        "query": "international motorbike shipping",
+        "monthly_searches": 10
+      },
+      {
+        "query": "motorbike moving company",
+        "monthly_searches": 10
+      },
+      {
+        "query": "motorbike freight costs",
+        "monthly_searches": 10
+      },
+      {
+        "query": "fork saver motorcycle",
+        "monthly_searches": 10
+      },
+      {
+        "query": "motorbike transport company",
+        "monthly_searches": 10
+      },
+      {
+        "query": "interstate motorbike transport costs",
+        "monthly_searches": 0
+      },
+      {
+        "query": "motorbike transport cost",
+        "monthly_searches": 30
+      },
+      {
+        "query": "motorcycle transport prices south africa",
+        "monthly_searches": 10
+      }
+    ]
+  },
+  "rank_capture": {
+    "status": "not_configured",
+    "reason": "No connected collector provides controlled Google mobile top-10 results for fixed cities. GSC mobile averages are reported separately."
+  },
+  "website_changes_require_approval": true
+}
