@@ -391,11 +391,18 @@ def audit_gsc():
 
 @app.post("/audit/full", dependencies=[Depends(require_agent_key)])
 def audit_full():
+    import asyncio
+    from app.signals import weekly_signals
     config = load_config()
+    signals = asyncio.run(weekly_signals())
     return {
         "brand": config["brand"],
         "technical": audit_technical(),
-        "gsc": audit_gsc(),
+        "gsc": {"site": config["gsc_site"], "country": config["market"]["gsc_country"],
+                "rows": len(signals["gsc"].get("analytics", {}).get("rows", [])),
+                "top_opportunities": signals["top_opportunities"], "write_actions_taken": 0,
+                "status": "error" if signals["gsc"].get("status") == "error" else "ok"},
+        "signals": signals,
         "guardrails": config["guardrails"],
     }
 

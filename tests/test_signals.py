@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager, nullcontext
 from unittest.mock import patch
 
 from app.gsc_mcp import collect_gsc, private_url, read_tool
-from app.signals import competitor_metadata
+from app.signals import competitor_metadata, MetadataParser
 
 
 def run(coroutine):
@@ -22,11 +22,20 @@ def run(coroutine):
 
 
 class SignalsTest(unittest.TestCase):
+    def test_title_and_meta_description_extraction(self):
+        parser = MetadataParser()
+        parser.feed('<title>Bike &amp; Transport</title><meta name="Description" content="Door to door">')
+        self.assertEqual(parser.title, "Bike & Transport")
+        self.assertEqual(parser.description, "Door to door")
+        absent = MetadataParser()
+        absent.feed('<title>Title only</title>')
+        self.assertIsNone(absent.description)
+
     def test_competitor_report_only_reads_selected_metadata(self):
         responses = [io.BytesIO(json.dumps({
             "watch1": {"url": "https://bikes2go.co.za/", "last_checked": 123},
             "other": {"url": "https://news.ycombinator.com/"},
-        }).encode()), io.BytesIO(b"Bikes2Go | Reliable Bike Transport\nMotorcycle transport description"), io.BytesIO(b'{"123": "snapshot.txt"}')]
+        }).encode()), io.BytesIO(b"Bikes2Go | Reliable Bike Transport\nMotorcycle transport description"), io.BytesIO(b'{"123": "snapshot.txt"}'), io.BytesIO(b'<title>Bikes2Go | Reliable Bike Transport</title><meta name="description" content="Motorcycle transport description">')]
         requests = []
         class Opener:
             def open(self, req, timeout):
@@ -36,8 +45,10 @@ class SignalsTest(unittest.TestCase):
             result = competitor_metadata()
         self.assertEqual(result["competitor_watch_count"], 1)
         self.assertEqual(result["watches"][0]["history"], {"123": "snapshot.txt"})
-        self.assertEqual([r.get_method() for r in requests], ["GET", "GET", "GET"])
-        self.assertTrue(all(r.get_header("X-api-key") == "test-key" for r in requests))
+        self.assertEqual([r.get_method() for r in requests], ["GET", "GET", "GET", "GET"])
+        self.assertTrue(all(r.get_header("X-api-key") == "test-key" for r in requests[:3]))
+        self.assertIsNone(requests[-1].get_header("X-api-key"))
+        self.assertEqual(result["watches"][0]["live_html_metadata"]["description_status"], "present")
 
     def test_private_host_boundary(self):
         self.assertEqual(private_url("http://gsc.railway.internal:3001/sse"), "http://gsc.railway.internal:3001/sse")

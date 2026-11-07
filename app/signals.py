@@ -3,11 +3,13 @@ import asyncio
 import json
 import os
 import time
+from html.parser import HTMLParser
 from datetime import datetime, timezone
 from urllib.request import Request, build_opener, ProxyHandler, HTTPRedirectHandler
 
 from app.gsc_mcp import collect_gsc, private_url
 from app.settings import load_config
+from app.scoring import score_gsc_rows
 
 LATEST_REPORT = None
 
@@ -21,6 +23,29 @@ def error_detail(exc):
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
+
+
+class MetadataParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.in_title = False
+        self.title = ""
+        self.description = None
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "title":
+            self.in_title = True
+        if tag == "meta" and attrs.get("name", "").lower() == "description":
+            self.description = attrs.get("content", "")
+
+    def handle_endtag(self, tag):
+        if tag == "title":
+            self.in_title = False
+
+    def handle_data(self, text):
+        if self.in_title:
+            self.title += text
 
 
 def competitor_metadata():
@@ -43,6 +68,15 @@ def competitor_metadata():
             watch["html_metadata_snapshot"] = response.read(20000).decode("utf-8")
         with opener.open(Request(endpoint + "/api/v1/watch/" + watch["id"] + "/history", headers=headers), timeout=20) as response:
             watch["history"] = json.load(response)
+        # Independently distinguish a genuinely absent meta description from a
+        # selector failure; no connector/API key is sent to the public page.
+        with build_opener(ProxyHandler({})).open(Request(watch["url"], headers={"User-Agent": "BTSA-SEO-Metadata/1.0"}), timeout=20) as response:
+            html = response.read(2000000).decode("utf-8", errors="replace")
+        parser = MetadataParser()
+        parser.feed(html)
+        watch["live_html_metadata"] = {"title": parser.title.strip(), "meta_description": parser.description,
+                                       "description_status": "present" if parser.description is not None else "absent",
+                                       "checked_at": datetime.now(timezone.utc).isoformat()}
     return {"source": "changedetection", "endpoint": endpoint, "watch_count": len(watches),
             "competitor_watch_count": len(selected), "watches": selected,
             "note": "HTML metadata history; Google displayed snippets and competitor CTR are not measured.",
@@ -70,6 +104,11 @@ def setup_competitor_watch_once():
             print("COMPETITOR_WATCH_CREATED " + json.dumps(response.json()), flush=True)
             # One bounded wait for the initial asynchronous fetch, no polling loop.
             time.sleep(20)
+        else:
+            ident = next(ident for ident, watch in existing.items() if watch.get("url") == target)
+            response = session.get(endpoint + "/api/v1/watch/" + ident, params={"recheck": "1"}, timeout=20, allow_redirects=False)
+            response.raise_for_status()
+            time.sleep(20)
         print("COMPETITOR_METADATA_ACCEPTANCE " + json.dumps(competitor_metadata()), flush=True)
 
 
@@ -89,6 +128,12 @@ async def weekly_signals():
         report["competitors"] = await asyncio.to_thread(competitor_metadata)
     except Exception as exc:
         report["competitors"] = {"status": "error", "endpoint": os.getenv("COMPETITOR_METADATA_URL"), "error": error_detail(exc)}
+    rows = [{**row, "keyword": row.get("query", "")} for row in report["gsc"].get("analytics", {}).get("rows", [])]
+    report["top_opportunities"] = score_gsc_rows(rows, config["seo"]["strike_zone_min"], config["seo"]["strike_zone_max"])[:30]
+    report["recommended_next_action"] = {
+        "action": "Review the leading query/page opportunity and its intent before proposing a website edit.",
+        "evidence": report["top_opportunities"][:1], "website_approval_required": True,
+    }
     report["verified"] = "properties" in report["gsc"] and report["competitors"].get("competitor_watch_count", 0) > 0
     LATEST_REPORT = report
     return report
@@ -103,6 +148,7 @@ def acceptance_once():
     report = asyncio.run(weekly_signals())
     gsc = report["gsc"]
     summary = {**report, "gsc": {**gsc}}
+    summary["top_opportunities"] = report["top_opportunities"][:3]
     for name in ("overview", "analytics", "mobile_organic_baseline"):
         if name in gsc:
             summary["gsc"][name] = {**gsc[name], "rows": gsc[name].get("rows", [])[:5],
