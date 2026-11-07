@@ -2,7 +2,7 @@ import os
 import threading
 import base64
 import requests
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Header
 from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from app.settings import load_config
@@ -411,6 +411,15 @@ def audit_full():
 async def audit_weekly():
     from app.signals import weekly_signals
     return await weekly_signals()
+
+
+@app.post("/reports/weekly-email")
+async def weekly_email(x_report_key: str | None = Header(default=None)):
+    from app.email_report import valid_report_key, render_email
+    from app.signals import weekly_signals
+    if not valid_report_key(x_report_key):
+        raise HTTPException(status_code=401, detail="Invalid report key")
+    return render_email(await weekly_signals())
 
 
 @app.get("/audit/weekly/latest", dependencies=[Depends(require_agent_key)])
