@@ -11,6 +11,12 @@ from app.settings import load_config
 LATEST_REPORT = None
 
 
+def error_detail(exc):
+    if isinstance(exc, BaseExceptionGroup):
+        return "; ".join(error_detail(child) for child in exc.exceptions)[:500]
+    return f"{type(exc).__name__}: {exc}"[:500]
+
+
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
@@ -43,11 +49,11 @@ async def weekly_signals():
     try:
         report["gsc"] = await collect_gsc(config["gsc_site"], config["market"]["gsc_country"])
     except Exception as exc:
-        report["gsc"] = {"status": "error", "error": str(exc)[:500]}
+        report["gsc"] = {"status": "error", "endpoint": os.getenv("GSC_MCP_URL"), "error": error_detail(exc)}
     try:
         report["competitors"] = await asyncio.to_thread(competitor_metadata)
     except Exception as exc:
-        report["competitors"] = {"status": "error", "error": str(exc)[:300]}
+        report["competitors"] = {"status": "error", "endpoint": os.getenv("COMPETITOR_METADATA_URL"), "error": error_detail(exc)}
     report["verified"] = "properties" in report["gsc"] and "watch_count" in report["competitors"]
     LATEST_REPORT = report
     return report
