@@ -114,25 +114,34 @@
       "url": "https://www.cmassist.co.za/",
       "name": "Cape Moto Assist",
       "research_urls": [
-        "https://www.cmassist.co.za/motorcycle-transport-southafrica"
+        "https://www.cmassist.co.za/motorcycle-transport-southafrica",
+        "https://www.cmassist.co.za/motorcycle-transport-kzn",
+        "https://www.cmassist.co.za/motorcycle-transport-johannesburg"
       ]
     },
     {
       "url": "https://www.biketransportsa.co.za/",
       "name": "Ride-All-Over",
       "research_urls": [
-        "https://www.biketransportsa.co.za/services/"
+        "https://www.biketransportsa.co.za/services/",
+        "https://www.biketransportsa.co.za/about/"
       ]
     },
     {
       "url": "https://biketransporters.co.za/",
-      "name": "Bike Transporters"
+      "name": "Bike Transporters",
+      "research_urls": [
+        "https://biketransporters.co.za/contact-us"
+      ]
     },
     {
       "url": "https://www.bike-freight-transport.co.za/",
       "name": "Bike Freight Transport",
       "citations": [
         "https://www.uship.com/service-providers/934006814-bike-freight-transport-pty-ltd"
+      ],
+      "research_urls": [
+        "https://www.bike-freight-transport.co.za/the-complete-guide-to-motorcycle-transport-in-south-africa/"
       ]
     }
   ],
