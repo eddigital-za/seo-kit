@@ -81,7 +81,7 @@ def render_email(report):
         for value, label in [(lead.get("impressions"), "Seen on Google"), (lead.get("clicks"), "Clicks to your site"), (lead.get("position"), "Avg. position")]:
             parts.append('<td width="33%"><strong style="font-size:29px;color:#0c6577">' + text(value) + '</strong><div style="font-size:12px;line-height:1.4;margin-top:6px">' + label + '</div></td>')
         parts.append('</tr></table><p style="' + muted + ';margin:8px 0 20px">These figures describe this search phrase and page, not all website traffic.</p>')
-        parts.append('<div style="background:#fff4d9;border-left:4px solid #e4a526;padding:16px 18px"><strong style="font-size:13px;color:#815700">ONE PRIORITY</strong><p style="font-size:17px;line-height:1.45;margin:8px 0">' + text(plan.get("recommended_action", "Review this page and prepare one improvement proposal.")) + '</p><div style="font-size:13px;color:#705b32">Your approval comes before any website edit.</div></div>')
+        parts.append('<div style="background:#fff4d9;border-left:4px solid #e4a526;padding:16px 18px"><strong style="font-size:13px;color:#815700">ONE PRIORITY</strong><p style="font-size:17px;line-height:1.45;margin:8px 0">' + text(report.get("recommended_next_action", {}).get("action") or plan.get("recommended_action", "Review this page and prepare one improvement proposal.")) + '</p><div style="font-size:13px;color:#705b32">Your approval comes before any website edit.</div></div>')
     if plan.get("markets"):
         parts.append('<h2 style="font-size:18px;margin:25px 0 12px">Five-market coverage</h2>')
         parts.append('<p style="' + muted + '">' + ' · '.join(text(m["market"]) + ': ' + text(m["observed_commercial_queries"]) + ' searches observed' for m in plan["markets"]) + '</p>')
@@ -102,6 +102,13 @@ def render_email(report):
     else:
         competitor_line = "No competitor page checked yet."
     parts.append('<p style="font-size:14px;line-height:1.5"><strong>Competitors</strong><br>' + competitor_line + '</p>')
+    strategy = plan.get("competitor_strategy", {})
+    if strategy.get("actions"):
+        parts.append('<h2 style="font-size:18px">Prioritized competitor actions</h2><ol>')
+        for item in strategy["actions"][:3]:
+            parts.append('<li><strong>' + text(item["query"]) + '</strong> · ' + text(page_name(item["page"])) +
+                         ' · ' + text(item["gsc_impressions"]) + ' impressions. ' + text(item["action"]) + '</li>')
+        parts.append('</ol><p style="' + muted + '">The attached evidence includes compared pages, topic differences and public citations.</p>')
     parts.append('<p style="font-size:14px;line-height:1.5"><strong>AI referrals</strong><br>' + text(ai.get("sessions", "Unavailable")) + ' visits · ' + text(ai.get("engaged_sessions", "Unavailable")) + ' engaged visits · ' + text(ai.get("key_events", "Unavailable")) + ' recorded goals.<br><span style="' + muted + '">' + ai_label + text(short_date(ai_window.get("start"))) + '–' + text(short_date(ai_window.get("end"))) + ai_note + '</span></p>')
     parts.append('<p style="font-size:14px;line-height:1.5"><strong>Website changes</strong><br>None made by this report.</p></td></tr>')
     parts.append('<tr><td style="padding:18px 26px;background:#f5f8fa;' + muted + '">Position is a Google average; lower is better. Comparisons use matching search phrases and URLs. Search figures cover the listed phrases, not site totals.</td></tr></table></td></tr></table></body></html>')

@@ -10,6 +10,7 @@ from urllib.request import Request, build_opener, ProxyHandler, HTTPRedirectHand
 from app.gsc_mcp import collect_gsc, private_url
 from app.settings import load_config
 from app.commercial_plan import load_plan, build_commercial_plan
+from app.competitor_strategy import collect_strategy
 
 LATEST_REPORT = None
 
@@ -127,11 +128,15 @@ async def weekly_signals():
         report["competitors"] = await asyncio.to_thread(competitor_metadata)
     except Exception as exc:
         report["competitors"] = {"status": "error", "endpoint": os.getenv("COMPETITOR_METADATA_URL"), "error": error_detail(exc)}
-    report["commercial_plan"] = build_commercial_plan(report["gsc"])
+    plan = load_plan()
+    report["commercial_plan"] = build_commercial_plan(report["gsc"], plan)
+    report["commercial_plan"]["competitor_strategy"] = await asyncio.to_thread(
+        collect_strategy, plan, report["commercial_plan"])
     report["top_opportunities"] = report["commercial_plan"]["top_opportunities"]
+    actions = report["commercial_plan"]["competitor_strategy"]["actions"]
     report["recommended_next_action"] = {
-        "action": report["commercial_plan"]["recommended_action"],
-        "evidence": report["top_opportunities"][:1], "website_approval_required": True,
+        "action": actions[0]["action"] if actions else report["commercial_plan"]["recommended_action"],
+        "evidence": actions[:1] or report["top_opportunities"][:1], "website_approval_required": True,
     }
     report["verified"] = "properties" in report["gsc"] and report["competitors"].get("competitor_watch_count", 0) > 0
     LATEST_REPORT = report
@@ -148,6 +153,11 @@ def acceptance_once():
     gsc = report["gsc"]
     summary = {**report, "gsc": {**gsc}}
     summary["commercial_plan"] = {k: v for k, v in report["commercial_plan"].items() if k not in ("keyword_to_page_map", "mobile_rows", "demand_snapshot", "top_opportunities")}
+    strategy = summary["commercial_plan"].pop("competitor_strategy")
+    summary["competitor_strategy_check"] = {
+        "pages": {url: page["status"] for url, page in strategy["pages"].items()},
+        "actions": len(strategy["actions"]), "serp_status": strategy["serp_status"],
+    }
     summary["top_opportunities"] = report["top_opportunities"][:3]
     for name in ("overview", "analytics", "previous_analytics", "mobile_organic_baseline"):
         if name in gsc:
