@@ -232,7 +232,7 @@ def sitemap_commercial_audit() -> dict[str, Any]:
     discovered = set()
     for sitemap_url in sitemap_urls[:30]:
         response = requests.get(sitemap_url, timeout=30, headers={"User-Agent": "BTSA-SEO-Agent/0.4"})
-        urls = re.findall(r"<loc[^>]*>\\s*(.*?)\\s*</loc>", response.text, re.I | re.S)
+        urls = re.findall(r"<loc[^>]*>\s*(.*?)\s*</loc>", response.text, re.I | re.S)
         discovered.update(urls)
         child_results.append({"url": sitemap_url, "status": response.status_code, "url_count": len(urls)})
     return {
